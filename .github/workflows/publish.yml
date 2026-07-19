@@ -52,5 +52,26 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Publish to PyPI
+      # pypa/gh-action-pypi-publish signs a Sigstore/PEP 740 attestation for
+      # each file before uploading, so every publish depends on Sigstore's
+      # public Rekor transparency-log service being reachable. That service
+      # has known, transient connectivity blips (e.g. `ConnectionResetError`
+      # from rekor.sigstore.dev) unrelated to this package or workflow --
+      # retrying almost always just works. Retried up to 3x here instead of
+      # requiring a manual re-run. Safe to retry freely: the attestation
+      # step runs *before* the actual PyPI upload, so a failure here means
+      # nothing was uploaded yet -- no partial-publish state to worry about.
+      - name: Publish to PyPI (attempt 1)
+        id: publish_1
+        uses: pypa/gh-action-pypi-publish@release/v1
+        continue-on-error: true
+
+      - name: Publish to PyPI (attempt 2, retry on transient Sigstore/Rekor failure)
+        id: publish_2
+        if: steps.publish_1.outcome == 'failure'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        continue-on-error: true
+
+      - name: Publish to PyPI (attempt 3, final retry)
+        if: steps.publish_1.outcome == 'failure' && steps.publish_2.outcome == 'failure'
         uses: pypa/gh-action-pypi-publish@release/v1
