@@ -1,0 +1,51 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package with dev extras
+        run: pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: pytest tests/ -v
+
+  core-only-import:
+    # Separate job, deliberately WITHOUT the dev/optional extras: proves
+    # `import freqcascade` and the RF-backed classes work with only the
+    # four core dependencies installed, matching the README's promise.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package (core deps only, no extras)
+        run: pip install -e . pytest
+
+      - name: Import check + RF-only test
+        run: |
+          python -c "import freqcascade; print('OK', freqcascade.__version__)"
+          pytest tests/test_decomposition.py tests/test_mocked_decomposition.py tests/test_mocked_focc.py tests/test_lazy_imports.py -v
