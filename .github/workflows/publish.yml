@@ -1,0 +1,56 @@
+name: Publish to PyPI
+
+# Trigger by publishing a GitHub Release (recommended: tag the release
+# vX.Y.Z to match the version in pyproject.toml), or run manually via
+# workflow_dispatch for a dry-run build without publishing.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Actually upload to PyPI (unchecked = build only, for a dry run)"
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: pip install build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: pipx run twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || inputs.publish
+    environment:
+      name: pypi
+      url: https://pypi.org/project/freqcascade/
+    permissions:
+      id-token: write  # required for PyPI Trusted Publishing (OIDC) -- no API token needed
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
