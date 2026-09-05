@@ -248,16 +248,23 @@ def save_folds(folds: list[FoldSplit], path: Path | str) -> None:
     drifting (e.g. an unrelated refactor of `_iterative_stratify`'s
     tie-break order) between when different methods are run."""
     path = Path(path)
+
+    def _fit_uint(a: np.ndarray) -> np.ndarray:
+        a = np.asarray(a)
+        m = int(a.max()) if a.size else 0
+        return a.astype(np.uint16 if m < 2**16 else np.uint32)
+
     payload: dict[str, np.ndarray] = {}
     repeats, fold_ids = [], []
     for fs in folds:
-        payload[f"train_{fs.repeat}_{fs.fold}"] = fs.train_idx
-        payload[f"test_{fs.repeat}_{fs.fold}"] = fs.test_idx
+        payload[f"train_{fs.repeat}_{fs.fold}"] = _fit_uint(fs.train_idx)
+        payload[f"test_{fs.repeat}_{fs.fold}"] = _fit_uint(fs.test_idx)
         repeats.append(fs.repeat)
         fold_ids.append(fs.fold)
     payload["_meta_repeats"] = np.array(repeats)
     payload["_meta_folds"] = np.array(fold_ids)
-    np.savez(path, **payload)
+    # compressed: fold index arrays are large and highly regular
+    np.savez_compressed(path, **payload)
 
 
 def load_folds(path: Path | str) -> list[FoldSplit]:

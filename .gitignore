@@ -19,12 +19,12 @@ env/
 .idea/
 .vscode/
 
-# Local data caches (embeddings, downloaded corpora) and benchmark output.
-data/
+# Local data caches (embeddings, downloaded corpora) and benchmark output --
+# ignore everything under data/ EXCEPT the committed CV fold indices, which
+# every method must share (see scripts/make_folds.py).
+data/*
+!data/folds/
+data/folds/*
+!data/folds/*.npz
 results/
 *.npy
-
-# Phase 1 will un-ignore data/folds/*.npz and commit the final fold indices
-# once every loader is verified end to end:
-# !data/folds/
-# !data/folds/*.npz
