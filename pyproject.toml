@@ -4,13 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freqcascade"
-version = "0.1.0"
-description = "Recursive frequency-ordered ensemble decomposition for imbalanced multiclass and multi-label classification"
+version = "0.2.0"
+description = "Frequency-ordered local decomposition for imbalanced multiclass and multi-label text classification"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-    { name = "freqcascade contributors" },
+    { name = "Md Abdullah Al Kafi", email = "kafi@diu.edu.bd" },
+    { name = "Raka Moni" },
+    { name = "Walayat Hussain" },
 ]
 keywords = [
     "imbalanced-learning",
@@ -51,8 +53,12 @@ stats = [
     "statsmodels>=0.14",
     "matplotlib>=3.7",
 ]
+datasets = [
+    "datasets>=2.14",
+    "nltk>=3.8",
+]
 all = [
-    "freqcascade[torch,imbalance,stats]",
+    "freqcascade[torch,imbalance,stats,datasets]",
 ]
 dev = [
     "pytest>=7.0",
@@ -60,9 +66,9 @@ dev = [
 ]
 
 [project.urls]
-# TODO: fill in once you've created the repo -- e.g.
-# Homepage = "https://github.com/<your-username>/freqcascade"
-# Repository = "https://github.com/<your-username>/freqcascade"
+Homepage = "https://github.com/abkafi1234/freqcascade"
+Repository = "https://github.com/abkafi1234/freqcascade"
+Issues = "https://github.com/abkafi1234/freqcascade/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
