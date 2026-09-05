@@ -114,16 +114,24 @@ def load_clinc150() -> TextDataset:
     )
 
 
-def load_twenty_newsgroups(imbalance_ratio: float = 50.5, seed: int = 0) -> TextDataset:
+def load_twenty_newsgroups(
+    imbalance_ratio: float = 50.5, seed: int = 0, strip_metadata: bool = False
+) -> TextDataset:
     """20 Newsgroups with a geometric imbalance injected to ``imbalance_ratio``
     (default 50.5, the paper's IR). The original run's exact per-class counts
     weren't checked in, so this reproduces the target IR and the geometric
-    construction, not necessarily the first submission's row count."""
+    construction, not necessarily the first submission's row count.
+
+    ``strip_metadata=False`` (default, matches the original submission) keeps
+    the newsgroup headers/footers/quotes; ``True`` removes them
+    (``remove=('headers','footers','quotes')``), which is the leakage-free
+    setting and makes the task markedly harder -- documented here because the
+    two give very different absolute numbers.
+    """
     from sklearn.datasets import fetch_20newsgroups
 
-    bunch = fetch_20newsgroups(
-        subset="all", remove=("headers", "footers", "quotes"), random_state=seed
-    )
+    remove = ("headers", "footers", "quotes") if strip_metadata else ()
+    bunch = fetch_20newsgroups(subset="all", remove=remove, random_state=seed)
     texts = np.array([clean_text(t) for t in bunch.data], dtype=object)
     labels = np.array(bunch.target)
     if imbalance_ratio and imbalance_ratio > 1:

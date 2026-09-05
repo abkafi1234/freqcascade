@@ -165,5 +165,17 @@ def easy_ensemble_classifier(n_estimators: int = 50, random_state: int | None = 
 
 
 def rusboost_classifier(n_estimators: int = 50, random_state: int | None = None):
-    """Boosting + random undersampling (Seiffert et al. 2010)."""
-    return RUSBoostClassifier(n_estimators=n_estimators, random_state=random_state)
+    """Boosting + random undersampling (Seiffert et al. 2010).
+
+    The default depth-1 weak learner cannot beat 1/K on a many-class problem
+    after undersampling, so SAMME aborts the whole ensemble ("BaseClassifier
+    ... is worse than random"). A depth-3 tree lets the ensemble fit and
+    produce its (still near-zero at high K) score, rather than a hard failure.
+    """
+    from sklearn.tree import DecisionTreeClassifier
+
+    return RUSBoostClassifier(
+        estimator=DecisionTreeClassifier(max_depth=3),
+        n_estimators=n_estimators,
+        random_state=random_state,
+    )
