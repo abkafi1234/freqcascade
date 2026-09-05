@@ -31,11 +31,13 @@ from freqcascade.datasets import load
 DEFAULT_DATASETS = ["clinc150", "20newsgroups", "wos46985", "drug_reviews", "ohsumed_23"]
 
 
-def run_dataset(name: str, method_names: list[str], encoder: str) -> None:
+def run_dataset(name: str, method_names: list[str], encoder: str, kind: str = "all") -> None:
     ds = load(name)
     print(f"\n=== {name} === {ds.summary()}")
     methods = SINGLE_LABEL_METHODS()
     selected = [methods[m] for m in (method_names or methods)]
+    if kind != "all":
+        selected = [m for m in selected if m.kind == kind]
 
     fixed_split = ds.split if ds.split is not None else None
     folds = None if fixed_split is not None else get_folds(ds)
@@ -64,11 +66,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("datasets", nargs="*", default=DEFAULT_DATASETS)
     ap.add_argument("--methods", default="", help="comma-separated subset of the method registry")
+    ap.add_argument("--kind", default="all", choices=("all", "rf", "nn"), help="restrict to TF-IDF (rf) or embedding (nn) methods")
     ap.add_argument("--encoder", default=DEFAULT_ENCODER, help="minilm | pubmedbert | mpnet")
     args = ap.parse_args()
     method_names = [s for s in args.methods.split(",") if s]
     for name in (args.datasets or DEFAULT_DATASETS):
-        run_dataset(name, method_names, args.encoder)
+        run_dataset(name, method_names, args.encoder, args.kind)
 
 
 if __name__ == "__main__":

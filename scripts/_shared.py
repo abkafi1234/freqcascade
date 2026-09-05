@@ -212,10 +212,27 @@ def score(method: Method, X, y, folds, fixed_split=None):
 
 
 def write_results(rows: list[dict], name: str):
+    """Merge into results/<name>.jsonl: rows for any (method, encoder) present
+    in `rows` replace what's on disk, others are kept. Lets the benchmark be
+    run in pieces (--kind rf, then --kind nn, then a re-run of one method)
+    without clobbering earlier output."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"{name}.jsonl"
+
+    def key(r):
+        return (r.get("method"), r.get("encoder"))
+
+    incoming_keys = {key(r) for r in rows}
+    kept = []
+    if out.exists():
+        for line in out.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                r = json.loads(line)
+                if key(r) not in incoming_keys:
+                    kept.append(r)
+    merged = kept + rows
     with out.open("w", encoding="utf-8") as fh:
-        for r in rows:
+        for r in merged:
             fh.write(json.dumps(r) + "\n")
-    print(f"wrote {len(rows)} rows -> {out}")
+    print(f"wrote {len(rows)} rows ({len(merged)} total) -> {out}")
     return out

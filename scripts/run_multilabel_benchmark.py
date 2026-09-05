@@ -28,11 +28,13 @@ from freqcascade.datasets import load
 DEFAULT_DATASETS = ["reuters21578", "hoc", "litcovid"]
 
 
-def run_dataset(name: str, method_names: list[str], encoder: str) -> None:
+def run_dataset(name: str, method_names: list[str], encoder: str, kind: str = "all") -> None:
     ds = load(name)
     print(f"\n=== {name} === {ds.summary()}")
     methods = MULTI_LABEL_METHODS()
     selected = [methods[m] for m in (method_names or methods)]
+    if kind != "all":
+        selected = [m for m in selected if m.kind == kind]
     folds = get_folds(ds)
 
     feats: dict[str, object] = {}
@@ -57,11 +59,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("datasets", nargs="*", default=DEFAULT_DATASETS)
     ap.add_argument("--methods", default="")
+    ap.add_argument("--kind", default="all", choices=("all", "rf", "nn"))
     ap.add_argument("--encoder", default=DEFAULT_ENCODER)
     args = ap.parse_args()
     method_names = [s for s in args.methods.split(",") if s]
     for name in (args.datasets or DEFAULT_DATASETS):
-        run_dataset(name, method_names, args.encoder)
+        run_dataset(name, method_names, args.encoder, args.kind)
 
 
 if __name__ == "__main__":
