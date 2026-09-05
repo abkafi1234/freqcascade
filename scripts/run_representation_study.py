@@ -19,6 +19,7 @@ from _shared import (
     ENCODERS,
     MULTI_LABEL_METHODS,
     SINGLE_LABEL_METHODS,
+    already_done,
     embed,
     get_folds,
     make_tfidf,
@@ -45,21 +46,17 @@ def run(dataset: str, encoders: list[str]) -> None:
     folds = None if fixed_split is not None else get_folds(ds)
     train_mask = (ds.split != "test") if fixed_split is not None else np.ones(ds.n_samples, bool)
 
-    rows = []
+    tag = f"rq5_{ds.name}"
     for m in methods:
-        if m.kind == "rf":
-            X = make_tfidf(ds.texts[train_mask], ds.texts)
-            for r in score(m, X, ds.target, folds, fixed_split):
-                r["encoder"] = "tfidf"
-                rows.append(r)
-        else:
-            for enc in encoders:
-                X = embed(ds.texts, enc, ds.name)
-                print(f"  {ds.name} / {m.name} / {enc}")
-                for r in score(m, X, ds.target, folds, fixed_split):
-                    r["encoder"] = enc
-                    rows.append(r)
-    write_results(rows, f"rq5_{ds.name}")
+        combos = [("tfidf", None)] if m.kind == "rf" else [(e, e) for e in encoders]
+        for enc_label, enc_arg in combos:
+            if already_done(tag, m.name, encoder=enc_label):
+                print(f"  skip {ds.name} / {m.name} / {enc_label} (done)")
+                continue
+            X = make_tfidf(ds.texts[train_mask], ds.texts) if m.kind == "rf" else embed(ds.texts, enc_arg, ds.name)
+            print(f"  {ds.name} / {m.name} / {enc_label}")
+            rows = [{**r, "encoder": enc_label} for r in score(m, X, ds.target, folds, fixed_split)]
+            write_results(rows, tag)
 
 
 def main() -> None:
