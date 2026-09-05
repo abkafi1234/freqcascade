@@ -109,12 +109,21 @@ class NNEnsembleBaseLearner:
         hidden_layer_sizes: tuple[int, ...] = (64,),
         max_iter: int = 200,
         random_state: int | None = None,
+        max_bootstrap_per_class: int = 2000,
     ):
         self.n_members = n_members
         self.rebalance = rebalance
         self.hidden_layer_sizes = hidden_layer_sizes
         self.max_iter = max_iter
         self.random_state = random_state
+        # Cap on each class's balanced-bootstrap draw, shared with
+        # TorchNNEnsembleBaseLearner and TextCNNEnsembleBaseLearner so all
+        # three neural base learners rebalance to the same budget by default
+        # (paper Eq. 5, n_cap). Previously uncapped here, which let a shallow
+        # cascade node with a huge "rest" class draw tens of thousands of
+        # rows per member. Only the balanced draw is capped; the plain
+        # (rebalance=False) bootstrap stays standard size-n bagging.
+        self.max_bootstrap_per_class = max_bootstrap_per_class
         self._members: list = []
 
     def fit(self, X, y: np.ndarray) -> "NNEnsembleBaseLearner":
@@ -122,7 +131,7 @@ class NNEnsembleBaseLearner:
         self._members = []
         for k in range(self.n_members):
             if self.rebalance:
-                idx = balanced_bootstrap_indices(y, rng)
+                idx = balanced_bootstrap_indices(y, rng, max_per_class=self.max_bootstrap_per_class)
             else:
                 idx = _plain_bootstrap_indices(y, rng)
             X_k, y_k = X[idx], y[idx]
@@ -152,8 +161,19 @@ class NNEnsembleBaseLearner:
 def _align_proba_columns(proba: np.ndarray, classes: np.ndarray) -> np.ndarray:
     """sklearn only emits columns for classes actually seen during fit;
     realign to a fixed [P(class=0), P(class=1)] layout so ensemble
-    members (and RF vs NN outputs) are always directly comparable/averageable."""
+    members (and RF vs NN outputs) are always directly comparable/averageable.
+
+    Binary targets must be encoded as {0, 1} -- both RFOEDClassifier and
+    FOCCClassifier always pass that (``(y == c).astype(int)`` / an indicator
+    column), and the fixed 2-column layout depends on it. A custom base
+    learner handed other labels would silently write to the wrong column, so
+    that is rejected here instead."""
     out = np.zeros((proba.shape[0], 2))
     for col, c in enumerate(classes):
-        out[:, int(c)] = proba[:, col]
+        ci = int(c)
+        if ci not in (0, 1):
+            raise ValueError(
+                f"_align_proba_columns expects binary {{0, 1}} targets, got class label {c!r}."
+            )
+        out[:, ci] = proba[:, col]
     return out

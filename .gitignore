@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local data caches (embeddings, downloaded corpora) -- released fold indices
+# under data/folds/ are committed explicitly.
+data/cache/
+*.npy
+!data/folds/*.npz

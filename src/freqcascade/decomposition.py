@@ -90,7 +90,13 @@ class RFOEDClassifier:
 
         classes, counts = np.unique(y, return_counts=True)
         if self.order == "frequency":
-            self.class_order_ = list(classes[np.argsort(-counts)])
+            # Descending frequency; ties broken deterministically toward the
+            # class that sorts first in `np.unique`'s output (ascending class
+            # value). `kind="stable"` is what enforces that tie-break -- a
+            # plain argsort here left equal-frequency classes in an order that
+            # varied across NumPy builds, and disagreed with FOCCClassifier,
+            # which already breaks frequency ties by column index (focc.py).
+            self.class_order_ = list(classes[np.argsort(-counts, kind="stable")])
         elif self.order == "random":
             order = list(classes)
             rng.shuffle(order)

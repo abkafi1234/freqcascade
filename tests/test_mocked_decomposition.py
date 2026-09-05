@@ -159,6 +159,31 @@ def test_prior_correct_false_is_a_no_op():
     np.testing.assert_array_equal(out, p)
 
 
+def test_frequency_order_tie_break_is_deterministic():
+    """Equal-frequency classes must be ordered deterministically -- toward
+    the class that sorts first in np.unique's output -- not left to
+    np.argsort's unstable default. Mirrors FOCCClassifier, which already
+    breaks frequency ties by column index."""
+    def factory(i):
+        return RecordingBinaryLearner(lambda X: np.full(X.shape[0], 0.5))
+
+    # classes 1 and 2 are tied at 5 each; 0 is the majority, 3 the minority.
+    y = np.array([0] * 10 + [1] * 5 + [2] * 5 + [3] * 2)
+    X = np.zeros((len(y), 1))
+    orders = []
+    for _ in range(3):
+        clf = RFOEDClassifier(base_learner_factory=factory, order="frequency", random_state=0)
+        clf.fit(X, y)
+        orders.append(list(clf.class_order_))
+    assert orders == [[0, 1, 2, 3]] * 3
+
+    # String labels: 'a' and 'c' tied -> 'a' first (ascending); 'd' last.
+    ys = np.array(["b"] * 10 + ["a"] * 5 + ["c"] * 5 + ["d"] * 2)
+    clf = RFOEDClassifier(base_learner_factory=factory, order="frequency", random_state=0)
+    clf.fit(np.zeros((len(ys), 1)), ys)
+    assert list(clf.class_order_) == ["b", "a", "c", "d"]
+
+
 def test_tail_classifier_handles_rows_unresolved_after_cascade_cap():
     """Constructs a pre-fitted RFOEDClassifier by hand (bypassing fit())
     to test predict()'s tail-routing branch in isolation: a mock tail

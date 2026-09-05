@@ -77,6 +77,7 @@ class TextCNNEnsembleBaseLearner:
         lr: float = 1e-3,
         device: str | None = None,
         random_state: int | None = None,
+        max_bootstrap_per_class: int = 2000,
     ):
         self.n_members = n_members
         self.rebalance = rebalance
@@ -89,6 +90,12 @@ class TextCNNEnsembleBaseLearner:
         self.lr = lr
         self.random_state = random_state
         self._device_arg = device
+        # Shared with NNEnsembleBaseLearner / TorchNNEnsembleBaseLearner so
+        # every neural base learner caps its balanced-bootstrap draw at the
+        # same budget by default (paper Eq. 5, n_cap). The reported pilot
+        # study (base-learner unit comparison) used max_bootstrap_per_class=1000
+        # for this unit specifically -- pass that explicitly to reproduce it.
+        self.max_bootstrap_per_class = max_bootstrap_per_class
         self._members = []  # list of (module, vocab) or a stub
 
     def _resolve_device(self):
@@ -128,7 +135,11 @@ class TextCNNEnsembleBaseLearner:
 
         self._members = []
         for k in range(self.n_members):
-            idx = balanced_bootstrap_indices(y, rng, max_per_class=1000) if self.rebalance else rng.integers(0, n, size=n)
+            idx = (
+                balanced_bootstrap_indices(y, rng, max_per_class=self.max_bootstrap_per_class)
+                if self.rebalance
+                else rng.integers(0, n, size=n)
+            )
             X_k, y_k = X[idx], y[idx]
             if len(np.unique(y_k)) < 2:
                 self._members.append(("stub", int(y_k[0])))
