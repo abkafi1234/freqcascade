@@ -25,8 +25,12 @@ EMB_CACHE = REPO_ROOT / "data" / "cache" / "embeddings"
 CV_SEED = 20260905          # one seed drives every fold split in the paper
 CV_REPEATS, CV_SPLITS = 5, 2
 N_ESTIMATORS = 200          # RF trees / node
-NN_MEMBERS = 50             # neural-ensemble members / node
-NN_EPOCHS = 250
+# The base-learner pilot (paper Table 8) shows macro-F1 saturates by K~=10-25
+# members while cost keeps growing near-linearly, so the revision runs the
+# neural ensemble at 25 members / 150 epochs (was 50 / 250). Override with
+# FREQCASCADE_NN_MEMBERS / _NN_EPOCHS to reproduce the original setting.
+NN_MEMBERS = int(os.environ.get("FREQCASCADE_NN_MEMBERS", "25"))
+NN_EPOCHS = int(os.environ.get("FREQCASCADE_NN_EPOCHS", "150"))
 RF_NJOBS = int(os.environ.get("FREQCASCADE_RF_NJOBS", "12"))  # RFOED fits nodes serially, so spend cores here
 
 # --- RQ5: frozen sentence encoders -------------------------------------------
@@ -127,8 +131,8 @@ def _single_label_methods() -> dict[str, Method]:
     ))
     m["OVR-RF"] = Method("OVR-RF", "rf", lambda s: OneVsRestClassifier(
         RandomForestClassifier(n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS, random_state=s)))
-    m["EasyEnsemble"] = Method("EasyEnsemble", "rf", lambda s: easy_ensemble_classifier(random_state=s))
-    m["RUSBoost"] = Method("RUSBoost", "rf", lambda s: rusboost_classifier(random_state=s))
+    m["EasyEnsemble"] = Method("EasyEnsemble", "rf", lambda s: easy_ensemble_classifier(random_state=s, n_jobs=RF_NJOBS))
+    m["RUSBoost"] = Method("RUSBoost", "rf", lambda s: rusboost_classifier(n_estimators=30, random_state=s))
     return m
 
 

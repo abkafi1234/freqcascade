@@ -34,7 +34,9 @@ STAGES: list[tuple[str, list[str]]] = [
     ("rfoed_rf",     ["run_single_label_benchmark.py", "--methods", "RFOED-RF", *RFOED_RF_SL]),
     ("nn_sl",        ["run_single_label_benchmark.py", "--kind", "nn", *SL]),
     ("nn_ml",        ["run_multilabel_benchmark.py", "--kind", "nn", *ML]),
-    ("factorial_sl", ["run_factorial_ablation.py", *[d for d in SL if d != "drug_reviews"]]),
+    # the 3-way ANOVA reproduces the paper's original single-label set; the
+    # multi-label 2x2 is the new n=3 RQ3 test.
+    ("factorial_sl", ["run_factorial_ablation.py", "20newsgroups", "clinc150", "wos46985"]),
     ("factorial_ml", ["run_factorial_ablation.py", "--multilabel", *ML]),
     ("rq5",          ["run_representation_study.py"]),
     ("diagnose_wos", ["diagnose_wos.py"]),

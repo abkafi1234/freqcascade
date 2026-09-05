@@ -153,14 +153,15 @@ class ResamplingBaseline:
         return self._model.predict_proba(X)
 
 
-def easy_ensemble_classifier(n_estimators: int = 50, random_state: int | None = None):
+def easy_ensemble_classifier(n_estimators: int = 50, random_state: int | None = None, n_jobs: int | None = None):
     """Resampling-*ensemble* baseline (Liu, Wu & Zhou 2009): many bagged
     balanced subsets of the flat K-class problem — the closest existing
     analog to RFOED-RF's "many balanced views" idea, but balancing on the
     instance axis of a flat problem rather than RFOED's class-decomposition
     axis. Important comparator for isolating what RFOED's structure adds
-    beyond "more balanced bagging.\""""
-    return EasyEnsembleClassifier(n_estimators=n_estimators, random_state=random_state)
+    beyond "more balanced bagging." The `n_jobs` bags are independent, so
+    passing it matters at high class count."""
+    return EasyEnsembleClassifier(n_estimators=n_estimators, random_state=random_state, n_jobs=n_jobs)
 
 
 def rusboost_classifier(n_estimators: int = 50, random_state: int | None = None):
