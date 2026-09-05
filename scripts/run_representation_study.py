@@ -29,8 +29,10 @@ from _shared import (
 
 from freqcascade.datasets import MULTI_LABEL, load
 
-# medical first, then one well-separated general-domain control (CLINC150)
-DEFAULT_DATASETS = ["drug_reviews", "ohsumed_23", "hoc", "litcovid", "clinc150"]
+# two medical single-label + two medical multi-label + one general-domain
+# control. drug_reviews (K~356) is left out of RQ5 -- the representation
+# question does not need the highest-K point and it triples the NN cost.
+DEFAULT_DATASETS = ["ohsumed_23", "hoc", "litcovid", "clinc150"]
 SL_METHODS = ["RFOED-NN", "Flat-RF+SMOTE"]      # proposed + strongest baseline
 ML_METHODS = ["FOCC-NN", "Binary Relevance-RF"]
 
