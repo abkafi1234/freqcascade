@@ -10,6 +10,7 @@ Setup section.
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +27,7 @@ CV_REPEATS, CV_SPLITS = 5, 2
 N_ESTIMATORS = 200          # RF trees / node
 NN_MEMBERS = 50             # neural-ensemble members / node
 NN_EPOCHS = 250
+RF_NJOBS = int(os.environ.get("FREQCASCADE_RF_NJOBS", "12"))  # RFOED fits nodes serially, so spend cores here
 
 # --- RQ5: frozen sentence encoders -------------------------------------------
 ENCODERS = {
@@ -82,7 +84,7 @@ class Method:
 def _rf_node_factory(seed, rebalance=True):
     from freqcascade.base_learners import RFBaseLearner
     return lambda node: RFBaseLearner(
-        n_estimators=N_ESTIMATORS, rebalance=rebalance, random_state=seed * 1000 + node, n_jobs=4
+        n_estimators=N_ESTIMATORS, rebalance=rebalance, random_state=seed * 1000 + node, n_jobs=RF_NJOBS
     )
 
 
@@ -116,15 +118,15 @@ def _single_label_methods() -> dict[str, Method]:
                     ("Flat-RF+Oversample", "random_oversample"), ("Flat-RF+SMOTE", "smote"),
                     ("Flat-RF+ADASYN", "adasyn_floored_minority"), ("Flat-RF+SMOTE+ENN", "smoteenn")]:
         m[key] = Method(key, "rf", lambda s, rs=rs: ResamplingBaseline(
-            resampler_name=rs, n_estimators=N_ESTIMATORS, random_state=s))
+            resampler_name=rs, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS, random_state=s))
 
     m["Flat Balanced-RF"] = Method("Flat Balanced-RF", "rf", lambda s: ResamplingBaseline(
         resampler_name="none",
         classifier_factory=lambda: RandomForestClassifier(
-            n_estimators=N_ESTIMATORS, class_weight="balanced_subsample", n_jobs=4, random_state=s),
+            n_estimators=N_ESTIMATORS, class_weight="balanced_subsample", n_jobs=RF_NJOBS, random_state=s),
     ))
     m["OVR-RF"] = Method("OVR-RF", "rf", lambda s: OneVsRestClassifier(
-        RandomForestClassifier(n_estimators=N_ESTIMATORS, n_jobs=4, random_state=s)))
+        RandomForestClassifier(n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS, random_state=s)))
     m["EasyEnsemble"] = Method("EasyEnsemble", "rf", lambda s: easy_ensemble_classifier(random_state=s))
     m["RUSBoost"] = Method("RUSBoost", "rf", lambda s: rusboost_classifier(random_state=s))
     return m
@@ -141,18 +143,18 @@ def _multi_label_methods() -> dict[str, Method]:
 
     m: dict[str, Method] = {}
     m["FOCC-RF"] = Method("FOCC-RF", "rf", lambda s: make_focc_rf(
-        order="frequency", rebalance=True, random_state=s, n_estimators=N_ESTIMATORS), multilabel=True, tags=("proposed",))
+        order="frequency", rebalance=True, random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True, tags=("proposed",))
     m["FOCC-NN"] = Method("FOCC-NN", "nn", lambda s: make_focc_nn(
         order="frequency", rebalance=True, random_state=s, n_members=NN_MEMBERS,
         hidden_size=128, max_epochs=NN_EPOCHS), multilabel=True, tags=("proposed",))
     m["Binary Relevance-RF"] = Method("Binary Relevance-RF", "rf",
-        lambda s: make_br_rf(random_state=s, n_estimators=N_ESTIMATORS), multilabel=True)
+        lambda s: make_br_rf(random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True)
     m["Balanced BR-RF"] = Method("Balanced BR-RF", "rf",
-        lambda s: make_balanced_br_rf(random_state=s, n_estimators=N_ESTIMATORS), multilabel=True)
+        lambda s: make_balanced_br_rf(random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True)
     m["Classifier Chains-RF"] = Method("Classifier Chains-RF", "rf",
-        lambda s: make_cc_rf(random_state=s, n_estimators=N_ESTIMATORS), multilabel=True)
+        lambda s: make_cc_rf(random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True)
     m["Ensemble of Chains-RF"] = Method("Ensemble of Chains-RF", "rf",
-        lambda s: make_ecc_rf(random_state=s, n_estimators=N_ESTIMATORS), multilabel=True)
+        lambda s: make_ecc_rf(random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True)
     return m
 
 
