@@ -19,6 +19,7 @@ import numpy as np
 from _shared import (
     DEFAULT_ENCODER,
     SINGLE_LABEL_METHODS,
+    already_done,
     embed,
     get_folds,
     make_tfidf,
@@ -38,6 +39,12 @@ def run_dataset(name: str, method_names: list[str], encoder: str, kind: str = "a
     selected = [methods[m] for m in (method_names or methods)]
     if kind != "all":
         selected = [m for m in selected if m.kind == kind]
+    enc_key = None if encoder == DEFAULT_ENCODER else encoder
+    tag = ds.name if encoder == DEFAULT_ENCODER else f"{ds.name}.{encoder}"
+    selected = [m for m in selected if not already_done(tag, m.name, encoder=enc_key)]
+    if not selected:
+        print("  (all methods already complete -- skipping)")
+        return
 
     fixed_split = ds.split if ds.split is not None else None
     folds = None if fixed_split is not None else get_folds(ds)
@@ -58,7 +65,6 @@ def run_dataset(name: str, method_names: list[str], encoder: str, kind: str = "a
         except Exception as e:  # a baseline that collapses is a result, not a crash
             print(f"    !! {m.name} failed: {type(e).__name__}: {e}")
             rows.append(dict(method=m.name, fold=-1, error=f"{type(e).__name__}: {e}"))
-    tag = ds.name if encoder == DEFAULT_ENCODER else f"{ds.name}.{encoder}"
     write_results(rows, tag)
 
 

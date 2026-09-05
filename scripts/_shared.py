@@ -130,7 +130,7 @@ def _single_label_methods() -> dict[str, Method]:
             n_estimators=N_ESTIMATORS, class_weight="balanced_subsample", n_jobs=RF_NJOBS, random_state=s),
     ))
     m["OVR-RF"] = Method("OVR-RF", "rf", lambda s: OneVsRestClassifier(
-        RandomForestClassifier(n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS, random_state=s)))
+        RandomForestClassifier(n_estimators=N_ESTIMATORS, n_jobs=2, random_state=s), n_jobs=RF_NJOBS))
     m["EasyEnsemble"] = Method("EasyEnsemble", "rf", lambda s: easy_ensemble_classifier(random_state=s, n_jobs=RF_NJOBS))
     m["RUSBoost"] = Method("RUSBoost", "rf", lambda s: rusboost_classifier(n_estimators=30, random_state=s))
     return m
@@ -215,6 +215,22 @@ def score(method: Method, X, y, folds, fixed_split=None):
         met.update(method=method.name, fold=seed, fit_predict_s=round(dt, 2))
         rows.append(met)
     return rows
+
+
+def already_done(name: str, method_name: str, min_rows: int = 6, encoder: str | None = None) -> bool:
+    """True if results/<name>.jsonl already holds >= min_rows non-error rows for
+    this (method, encoder) -- lets a re-run skip completed cells."""
+    out = RESULTS_DIR / f"{name}.jsonl"
+    if not out.exists():
+        return False
+    k = 0
+    for line in out.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        if r.get("method") == method_name and "error" not in r and r.get("encoder") == encoder:
+            k += 1
+    return k >= min_rows
 
 
 def write_results(rows: list[dict], name: str):
