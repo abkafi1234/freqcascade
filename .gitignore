@@ -19,8 +19,12 @@ env/
 .idea/
 .vscode/
 
-# Local data caches (embeddings, downloaded corpora) -- released fold indices
-# under data/folds/ are committed explicitly.
-data/cache/
+# Local data caches (embeddings, downloaded corpora) and benchmark output.
+data/
+results/
 *.npy
-!data/folds/*.npz
+
+# Phase 1 will un-ignore data/folds/*.npz and commit the final fold indices
+# once every loader is verified end to end:
+# !data/folds/
+# !data/folds/*.npz
