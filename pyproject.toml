@@ -54,7 +54,8 @@ stats = [
     "matplotlib>=3.7",
 ]
 datasets = [
-    "datasets>=2.14",
+    "datasets>=2.19",
+    "huggingface-hub>=0.23",
     "nltk>=3.8",
 ]
 all = [

@@ -4,12 +4,12 @@
 Sources, exactly:
 
 single-label
-  clinc150            HF ``clinc_oos`` config ``imbalanced``; the out-of-scope
-                      class dropped -> 150 intents, native train/val/test split.
+  clinc150            oos-eval ``data_imbalanced.json`` (Larson et al. 2019) --
+                      150 intents, the paper's exact native train/val/test split.
   twenty_newsgroups   sklearn ``fetch_20newsgroups`` (headers/footers/quotes
                       removed), then geometric imbalance injected to a target IR.
-  wos46985            HF ``web_of_science`` config ``WOS46985`` -- 134 sub-field
-                      classes under 7 parent domains.
+  wos46985            HF ``bakirgrbic/web-of-science`` (Kowsari HDLTeX release,
+                      X/Y/YL1 txt) -- 134 sub-field classes under 7 parent domains.
   drug_reviews        HF ``lewtun/drug-reviews`` (UCI Drugs.com). Classify the
                       ``condition`` field from the review text; junk conditions
                       dropped, rare conditions filtered by ``min_count``.
@@ -20,22 +20,27 @@ single-label
 multi-label
   reuters21578        NLTK ``reuters`` corpus (ModApte), train+test pooled, the
                       90 topic labels with support in both.
-  hoc                 HF Hallmarks of Cancer -- 10 cancer-hallmark labels over
-                      ~1.6k PubMed abstracts (document-level aggregation).
-  litcovid            HF LitCovid (BioCreative VII) -- 7 COVID-19 topic labels,
-                      genuinely multi-label, strong per-label skew.
+  hoc                 ``sb895/Hallmarks-of-Cancer`` GitHub -- 10 cancer-hallmark
+                      labels over ~1.6k PubMed abstracts (document-level rollup
+                      of the sentence-level annotations).
+  litcovid            HF ``KushT/LitCovid_BioCreative`` -- 7 COVID-19 topic
+                      labels, genuinely multi-label, strong per-label skew.
 
-Heavy deps (``datasets``, ``nltk``) are imported inside each loader, matching
-the rest of the package -- ``import freqcascade.datasets`` needs neither.
+Heavy deps (``datasets``, ``nltk``, ``huggingface_hub``) are imported inside
+each loader -- ``import freqcascade.datasets`` needs none of them.
 """
 
 from __future__ import annotations
+
+import json
+import urllib.request
 
 import numpy as np
 
 from ._base import (
     DatasetUnavailable,
     TextDataset,
+    cache_dir,
     clean_text,
     inject_geometric_imbalance,
     indicator_matrix,
@@ -44,23 +49,38 @@ from ._base import (
 # --- junk values seen in the Drugs.com ``condition`` field ---------------------
 _DRUG_CONDITION_JUNK = ("users found this comment helpful", "</span>")
 
+_UA = {"User-Agent": "Mozilla/5.0 (freqcascade dataset loader)"}
+
+
+def _download(url: str, dest_name: str):
+    """Fetch ``url`` to the cache dir once, return the local Path."""
+    path = cache_dir() / dest_name
+    if not path.exists():
+        try:
+            req = urllib.request.Request(url, headers=_UA)
+            with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as fh:  # noqa: S310
+                fh.write(r.read())
+        except Exception as e:
+            raise DatasetUnavailable(
+                f"Could not download {url}: {e}. Save it to {path} manually and re-run."
+            ) from e
+    return path
+
 
 def _hf_load(path: str, name: str | None = None, **kw):
-    """``datasets.load_dataset`` with a uniform, actionable failure."""
+    """``datasets.load_dataset`` (parquet/data-file datasets only -- script
+    datasets are no longer supported by ``datasets`` >= 4)."""
     try:
         from datasets import load_dataset
     except ImportError as e:  # pragma: no cover - trivial
         raise DatasetUnavailable(
-            "The 'datasets' package is required for this loader: pip install 'freqcascade[datasets]'"
+            "pip install 'freqcascade[datasets]' for this loader"
         ) from e
     try:
         return load_dataset(path, name, **kw)
     except Exception as e:
         raise DatasetUnavailable(
-            f"Could not load '{path}'"
-            + (f" ({name})" if name else "")
-            + f" from the Hugging Face Hub: {e}. "
-            "Check network access, or set FREQCASCADE_DATA to a cached copy."
+            f"Could not load '{path}'" + (f" ({name})" if name else "") + f": {e}"
         ) from e
 
 
@@ -68,32 +88,37 @@ def _hf_load(path: str, name: str | None = None, **kw):
 # Single-label
 # --------------------------------------------------------------------------- #
 
-def load_clinc150(drop_oos: bool = True) -> TextDataset:
-    ds = _hf_load("clinc_oos", "imbalanced")
-    parts, texts, labels, split = [], [], [], []
-    names = ds["train"].features["intent"].names
-    for split_name, hf_key in (("train", "train"), ("val", "validation"), ("test", "test")):
-        part = ds[hf_key]
-        for text, intent in zip(part["text"], part["intent"]):
-            label = names[intent]
-            if drop_oos and label == "oos":
-                continue
+_CLINC_URL = "https://raw.githubusercontent.com/clinc/oos-eval/master/data/data_imbalanced.json"
+
+
+def load_clinc150() -> TextDataset:
+    """CLINC150, the paper's exact source: the ``data_imbalanced.json`` release
+    from Larson et al. (2019). Uses the ``train``/``val``/``test`` keys (150
+    in-scope intents); the separate ``oos_*`` keys are ignored."""
+    path = _download(_CLINC_URL, "clinc_data_imbalanced.json")
+    raw = json.loads(open(path, encoding="utf-8").read())
+    texts, labels, split = [], [], []
+    for split_name, key in (("train", "train"), ("val", "val"), ("test", "test")):
+        for text, intent in raw[key]:
             texts.append(clean_text(text))
-            labels.append(label)
+            labels.append(intent)
             split.append(split_name)
-    kept = sorted(set(labels))
     return TextDataset(
         name="clinc150",
         texts=np.array(texts, dtype=object),
         target=np.array(labels, dtype=object),
-        label_names=kept,
+        label_names=sorted(set(labels)),
         is_multilabel=False,
         split=np.array(split, dtype=object),
-        notes="HF clinc_oos/imbalanced, oos dropped" if drop_oos else "HF clinc_oos/imbalanced",
+        notes="oos-eval data_imbalanced.json (train/val/test = 10525/3000/4500)",
     )
 
 
-def load_twenty_newsgroups(imbalance_ratio: float = 50.0, seed: int = 0) -> TextDataset:
+def load_twenty_newsgroups(imbalance_ratio: float = 50.5, seed: int = 0) -> TextDataset:
+    """20 Newsgroups with a geometric imbalance injected to ``imbalance_ratio``
+    (default 50.5, the paper's IR). The original run's exact per-class counts
+    weren't checked in, so this reproduces the target IR and the geometric
+    construction, not necessarily the first submission's row count."""
     from sklearn.datasets import fetch_20newsgroups
 
     bunch = fetch_20newsgroups(
@@ -116,39 +141,43 @@ def load_twenty_newsgroups(imbalance_ratio: float = 50.0, seed: int = 0) -> Text
 
 
 def load_wos46985() -> TextDataset:
-    ds = _hf_load("web_of_science", "WOS46985")
-    part = ds["train"] if "train" in ds else ds[list(ds.keys())[0]]
-    cols = part.column_names
-    text_col = next((c for c in ("input_data", "text", "abstract", "Abstract") if c in cols), None)
-    label_col = next((c for c in ("label", "Y", "labels") if c in cols), None)
-    if text_col is None or label_col is None:
-        raise DatasetUnavailable(f"web_of_science schema unexpected: columns were {cols}")
-    texts = np.array([clean_text(t) for t in part[text_col]], dtype=object)
-    raw = part[label_col]
-    feat = part.features[label_col]
-    names_attr = getattr(feat, "names", None)
-    if names_attr:
-        target = np.array([names_attr[i] for i in raw], dtype=object)
-        label_names = list(names_attr)
-    else:
-        target = np.array([str(v) for v in raw], dtype=object)
-        label_names = sorted(set(target))
+    """Web of Science (Kowsari HDLTeX), 46,985 abstracts across 134 sub-field
+    classes nested under 7 parent domains. Sourced from the ``bakirgrbic/
+    web-of-science`` mirror of the original X/Y/YL1 text files."""
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as e:  # pragma: no cover
+        raise DatasetUnavailable("pip install 'freqcascade[datasets]' for load_wos46985") from e
+    try:
+        x_path = hf_hub_download("bakirgrbic/web-of-science", "X.txt", repo_type="dataset")
+        y_path = hf_hub_download("bakirgrbic/web-of-science", "Y.txt", repo_type="dataset")
+    except Exception as e:
+        raise DatasetUnavailable(f"Could not fetch bakirgrbic/web-of-science: {e}") from e
+
+    texts = np.array(
+        [clean_text(t) for t in open(x_path, encoding="utf-8", errors="replace").read().splitlines()],
+        dtype=object,
+    )
+    y = [f"C{int(v):03d}" for v in open(y_path, encoding="utf-8").read().split()]
     return TextDataset(
         name="wos46985",
         texts=texts,
-        target=target,
-        label_names=label_names,
+        target=np.array(y, dtype=object),
+        label_names=sorted(set(y)),
         is_multilabel=False,
-        notes="HF web_of_science/WOS46985",
+        notes="bakirgrbic/web-of-science (HDLTeX WOS46985), 134 classes",
     )
 
 
-def load_drug_reviews(min_count: int = 20, subsample: int | None = None, seed: int = 0) -> TextDataset:
-    """UCI Drugs.com reviews; classify ``condition`` from review text.
+def load_drug_reviews(min_count: int = 20, subsample: int | None = 50_000, seed: int = 0) -> TextDataset:
+    """UCI Drugs.com reviews; classify ``condition`` from review text. A
+    high-cardinality, extreme-long-tail medical single-label benchmark
+    (~350 conditions, IR in the thousands).
 
     ``min_count`` drops conditions with fewer than that many reviews (below it
     the fold splits stop being meaningful); set it to 1 to keep the full tail.
-    ``subsample`` optionally caps the total row count (stratified) for compute.
+    ``subsample`` caps the total row count (stratified, seeded) -- default
+    50k for a tractable compute budget; pass ``None`` for the full ~150k.
     """
     ds = _hf_load("lewtun/drug-reviews")
     texts, conds = [], []
@@ -278,82 +307,94 @@ def load_reuters21578() -> TextDataset:
     )
 
 
+_HOC_HALLMARKS = [
+    "Sustaining proliferative signaling",
+    "Evading growth suppressors",
+    "Resisting cell death",
+    "Enabling replicative immortality",
+    "Inducing angiogenesis",
+    "Activating invasion and metastasis",
+    "Genomic instability and mutation",
+    "Tumor promoting inflammation",
+    "Cellular energetics",
+    "Avoiding immune destruction",
+]
+# spelling / phrasing variants seen in the annotation files -> canonical name
+_HOC_ALIASES = {
+    "genome instability and mutation": "Genomic instability and mutation",
+    "tumor-promoting inflammation": "Tumor promoting inflammation",
+    "deregulating cellular energetics": "Cellular energetics",
+    "avoiding immune destruction": "Avoiding immune destruction",
+}
+
+
 def load_hoc() -> TextDataset:
-    """Hallmarks of Cancer: 10 cancer-hallmark labels over ~1.6k PubMed
-    abstracts. Sentence-level labels in the source are aggregated to one
-    binary vector per abstract."""
-    last_err = None
-    for path, name in (("qanastek/HoC", None), ("bigbio/hallmarks_of_cancer", "hallmarks_of_cancer_bigbio_text")):
-        try:
-            ds = _hf_load(path, name)
-        except DatasetUnavailable as e:
-            last_err = e
-            continue
-        rows: dict[str, list[str]] = {}
-        for key in ds:
-            part = ds[key]
-            cols = part.column_names
-            id_col = next((c for c in ("document_id", "doc_id", "id", "pmid") if c in cols), None)
-            text_col = next((c for c in ("text", "abstract", "sentence") if c in cols), None)
-            label_col = next((c for c in ("labels", "label", "hallmarks") if c in cols), None)
-            if not (text_col and label_col):
+    """Hallmarks of Cancer: 10 cancer-hallmark labels over ~1.85k PubMed
+    abstracts. The source (``sb895/Hallmarks-of-Cancer``) annotates individual
+    sentences; a document gets a hallmark if any of its sentences carries it."""
+    import io
+    import zipfile
+
+    zip_path = _download(
+        "https://github.com/sb895/Hallmarks-of-Cancer/archive/refs/heads/master.zip",
+        "hallmarks_of_cancer.zip",
+    )
+    texts, label_lists = [], []
+    with zipfile.ZipFile(zip_path) as z:
+        text_files = sorted(n for n in z.namelist() if "/text/" in n and n.endswith(".txt"))
+        for tf in text_files:
+            pmid = tf.rsplit("/", 1)[-1]
+            lf = tf.replace("/text/", "/labels/")
+            try:
+                raw_label = z.read(lf).decode("utf-8", "replace").lower()
+            except KeyError:
                 continue
-            ids = part[id_col] if id_col else range(len(part[text_col]))
-            for doc_id, text, labs in zip(ids, part[text_col], part[label_col]):
-                key_id = str(doc_id)
-                rec = rows.setdefault(key_id, [text, []])
-                if isinstance(labs, str):
-                    labs = [labs]
-                rec[1].extend(l for l in (labs or []) if l)
-        if rows:
-            texts = np.array([clean_text(v[0]) for v in rows.values()], dtype=object)
-            label_lists = [sorted(set(v[1])) for v in rows.values()]
-            names = sorted({l for ll in label_lists for l in ll})
-            return TextDataset(
-                name="hoc",
-                texts=texts,
-                target=indicator_matrix(label_lists, names),
-                label_names=names,
-                is_multilabel=True,
-                notes=f"HF {path}, document-level aggregation",
-            )
-    raise DatasetUnavailable(f"No usable Hallmarks of Cancer source found. Last error: {last_err}")
+            labs = {c for c in _HOC_HALLMARKS if c.lower() in raw_label}
+            labs |= {v for k, v in _HOC_ALIASES.items() if k in raw_label}
+            if not labs:
+                continue  # ~270 abstracts carry no hallmark annotation
+            texts.append(clean_text(io.TextIOWrapper(io.BytesIO(z.read(tf)), encoding="utf-8", errors="replace").read()))
+            label_lists.append(sorted(labs))
+    return TextDataset(
+        name="hoc",
+        texts=np.array(texts, dtype=object),
+        target=indicator_matrix(label_lists, _HOC_HALLMARKS),
+        label_names=_HOC_HALLMARKS,
+        is_multilabel=True,
+        notes="sb895/Hallmarks-of-Cancer, sentence labels rolled up to document level, unlabeled abstracts dropped",
+    )
+
+
+# BioCreative VII LitCovid track label order (the 7-vector in the `label` column)
+_LITCOVID_TOPICS = [
+    "Treatment", "Diagnosis", "Prevention", "Mechanism",
+    "Transmission", "Epidemic Forecasting", "Case Report",
+]
 
 
 def load_litcovid() -> TextDataset:
-    """LitCovid (BioCreative VII): 7 COVID-19 topic labels, multi-label, with
-    strong per-label frequency skew -- a second multi-label medical benchmark."""
-    last_err = None
-    for path in ("bio-datasets/litcovid", "Yijia-Xiao/LitCovid", "mwong/litcovid"):
-        try:
-            ds = _hf_load(path)
-        except DatasetUnavailable as e:
-            last_err = e
-            continue
-        texts, label_lists = [], []
-        for key in ds:
-            part = ds[key]
-            cols = part.column_names
-            text_col = next((c for c in ("abstract", "text", "title_abstract") if c in cols), None)
-            label_col = next((c for c in ("label", "labels", "topics", "category") if c in cols), None)
-            if not (text_col and label_col):
+    """LitCovid (BioCreative VII track 5): 7 COVID-19 topic labels over ~33k
+    PubMed abstracts, multi-label, strong per-label skew."""
+    import ast
+
+    ds = _hf_load("KushT/LitCovid_BioCreative")
+    texts, Y = [], []
+    for key in ds:
+        part = ds[key]
+        for title, abstract, label in zip(part["title"], part["abstract"], part["label"]):
+            vec = ast.literal_eval(label) if isinstance(label, str) else list(label)
+            if len(vec) != len(_LITCOVID_TOPICS):
                 continue
-            for text, labs in zip(part[text_col], part[label_col]):
-                if isinstance(labs, str):
-                    labs = [x.strip() for x in labs.replace(";", ",").split(",") if x.strip()]
-                texts.append(clean_text(text))
-                label_lists.append(sorted(set(labs or [])))
-        if texts:
-            names = sorted({l for ll in label_lists for l in ll})
-            return TextDataset(
-                name="litcovid",
-                texts=np.array(texts, dtype=object),
-                target=indicator_matrix(label_lists, names),
-                label_names=names,
-                is_multilabel=True,
-                notes=f"HF {path}",
-            )
-    raise DatasetUnavailable(f"No usable LitCovid source found. Last error: {last_err}")
+            texts.append(clean_text(f"{title}. {abstract}"))
+            Y.append(vec)
+    return TextDataset(
+        name="litcovid",
+        texts=np.array(texts, dtype=object),
+        target=np.asarray(Y, dtype=np.int8),
+        label_names=_LITCOVID_TOPICS,
+        is_multilabel=True,
+        notes="KushT/LitCovid_BioCreative, train+val+test pooled",
+    )
 
 
 # --------------------------------------------------------------------------- #

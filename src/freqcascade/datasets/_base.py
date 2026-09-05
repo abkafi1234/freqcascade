@@ -69,11 +69,15 @@ class TextDataset:
     @property
     def class_frequencies(self) -> np.ndarray:
         """Per-class (single-label) or per-label (multi-label) positive counts,
-        descending."""
+        descending. Measured on the training rows when there is a fixed split
+        (the paper's imbalance ratios are training-set quantities)."""
+        target = self.target
+        if self.split is not None:
+            target = target[self.split == "train"]
         if self.is_multilabel:
-            counts = np.asarray(self.target).sum(axis=0)
+            counts = np.asarray(target).sum(axis=0)
         else:
-            _, counts = np.unique(self.target, return_counts=True)
+            _, counts = np.unique(target, return_counts=True)
         return np.sort(counts)[::-1]
 
     @property
