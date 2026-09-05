@@ -1,60 +1,58 @@
 # Reproducing the paper
 
-Every table and figure in *"Frequency-Ordered Local Decomposition for Imbalanced
-Text Classification"* is produced by the scripts in `scripts/`, from the loaders
-in `freqcascade.datasets` and the committed fold indices in `data/folds/`.
+Every table and figure is produced by `scripts/`, from the loaders in
+`freqcascade.datasets` and the committed fold indices in `data/folds/`.
 
 ## Setup
 
 ```bash
 pip install -e ".[all]"        # torch, imbalanced-learn, statsmodels, datasets, nltk
 python -c "import nltk; nltk.download('reuters')"
+python scripts/verify_datasets.py           # fetch every corpus, print a summary
 ```
 
-Downloaded corpora and cached embeddings go under `~/.cache/freqcascade`
+Downloaded corpora and cached embeddings live under `~/.cache/freqcascade`
 (override with `FREQCASCADE_DATA`).
 
 ## Datasets
 
-| name (`freqcascade.datasets.load`) | track | source | notes |
-|---|---|---|---|
-| `clinc150` | single-label | HF `clinc_oos/imbalanced` | 150 intents, out-of-scope dropped, native fixed split |
-| `20newsgroups` | single-label | sklearn `fetch_20newsgroups` | geometric imbalance injected to IR 50 |
-| `wos46985` | single-label | HF `web_of_science/WOS46985` | 134 sub-field classes |
-| `drug_reviews` | single-label | HF `lewtun/drug-reviews` | classify `condition`; `min_count` filters the tail |
-| `ohsumed_23` | single-label | Moschitti `ohsumed-first-20000-docs` | 23 MeSH C14 categories (medical) |
-| `reuters21578` | multi-label | NLTK `reuters` (ModApte) | R(90), train+test pooled |
-| `hoc` | multi-label | HF Hallmarks of Cancer | 10 cancer-hallmark labels (medical) |
-| `litcovid` | multi-label | HF LitCovid (BioCreative VII) | 7 COVID-19 topic labels (medical) |
+| `load(...)` | track | n | classes | IR | source |
+|---|---|---|---|---|---|
+| `clinc150` | single-label | 18,025 | 150 | 4.0 | oos-eval `data_imbalanced.json` (fixed split) |
+| `20newsgroups` | single-label | 5,272 | 20 | 50 | sklearn + geometric imbalance injection |
+| `wos46985` | single-label | 46,985 | 134 | 17 | HF `bakirgrbic/web-of-science` |
+| `ohsumed_23` | single-label | 23,166 | 23 | 29 | Moschitti `ohsumed-first-20000-docs` (medical) |
+| `drug_reviews` | single-label | 50,000 | ~356 | ~1800 | HF `lewtun/drug-reviews`, `condition` from text (medical) |
+| `reuters21578` | multi-label | 10,788 | 90 | 1982 | NLTK `reuters` ModApte |
+| `hoc` | multi-label | 1,580 | 10 | 4.4 | `sb895/Hallmarks-of-Cancer` (medical) |
+| `litcovid` | multi-label | 33,699 | 7 | 17 | HF `KushT/LitCovid_BioCreative` (medical) |
+
+`20newsgroups`: the original submission's per-class subsample counts were not
+archived, so the loader reproduces the target IR (50.5) and the geometric
+construction, not necessarily the first run's exact row count.
 
 ## Run order
 
 ```bash
-# 1. Fold indices (already committed; regenerates identically from CV_SEED)
-python scripts/make_folds.py
+python scripts/make_folds.py                     # regenerates data/folds/ identically
 
-# 2. Main benchmarks -> results/<dataset>.jsonl
-python scripts/run_single_label_benchmark.py
+python scripts/run_single_label_benchmark.py     # -> results/<dataset>.jsonl
 python scripts/run_multilabel_benchmark.py
+python scripts/run_factorial_ablation.py clinc150 20newsgroups wos46985 drug_reviews ohsumed_23
+python scripts/run_factorial_ablation.py --multilabel reuters21578 hoc litcovid
+python scripts/run_representation_study.py        # RQ5, sweeps _shared.ENCODERS
+python scripts/diagnose_wos.py
 
-# 3. RQ5 -- swap the frozen encoder (see scripts/_shared.py: ENCODERS)
-python scripts/run_single_label_benchmark.py --encoder pubmedbert drug_reviews ohsumed_23
-python scripts/run_multilabel_benchmark.py  --encoder pubmedbert hoc litcovid
-
-# 4. Significance tables
-python scripts/analyze.py --metric macro_f1       --ref RFOED-NN results/clinc150.jsonl results/wos46985.jsonl ...
-python scripts/analyze.py --metric label_macro_f1 --ref FOCC-NN  results/reuters21578.jsonl results/hoc.jsonl results/litcovid.jsonl
+python scripts/analyze.py --metric macro_f1 --ref RFOED-NN results/clinc150.jsonl ...
+python scripts/make_figures.py
 ```
 
-Config (CV seed, ensemble sizes, encoder list, the full method registry) lives
-in `scripts/_shared.py`.
+All config -- CV seed, ensemble sizes, encoder list, the full method registry --
+is in `scripts/_shared.py`.
 
-## Still to add (revision, in progress)
+## Not yet wired (revision, in progress)
 
-- `scripts/run_factorial_ablation.py` -- the 2x2x2 (ordering x base learner x
-  rebalance) and 2x2 FOCC ablations.
-- `scripts/diagnose_wos.py` -- the node-level own-node-miss / early-capture
-  error decomposition.
-- `scripts/make_figures.py` -- regenerate every figure.
-- Committed `data/folds/*.npz` (generated in the data-ingest phase once every
-  loader is verified end to end).
+- `make_figures.py`: `margin_vs_K`, `focc_ablation`, `per_class_recall`,
+  `representation` (results-driven -- added after the first full run).
+- The WOS46985 remediation sweep (cap / threshold / prior-correct) is driven
+  ad hoc through `RFOEDClassifier`'s arguments; a dedicated sweep script is TODO.
