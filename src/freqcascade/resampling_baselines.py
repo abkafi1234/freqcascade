@@ -75,6 +75,26 @@ def adasyn_floored_minority_strategy(y: np.ndarray) -> dict:
     return {cls: median for cls, cnt in counts.items() if cnt < median}
 
 
+def bounded_oversampling_strategy(y: np.ndarray, cap_mult: float) -> dict | str:
+    """Raise every minority class *toward* the head, not all the way to it:
+    the target is ``min(majority_count, ceil(cap_mult * median_class_count))``.
+
+    On a near-balanced problem the cap sits above the majority count and this
+    is a no-op (equivalent to ``"auto"``). On a long tail it bounds the
+    synthetic-sample count -- both a gentler, more defensible rebalancing and
+    the difference between a resampler finishing in minutes and generating
+    millions of rows at K in the hundreds. Returns ``"auto"`` when the cap
+    would not bind.
+    """
+    counts = Counter(y)
+    majority = max(counts.values())
+    median = float(np.median(list(counts.values())))
+    target = min(majority, int(np.ceil(cap_mult * median)))
+    if target >= majority:
+        return "auto"
+    return {c: target for c, n in counts.items() if n < target}
+
+
 class ResamplingBaseline:
     """Uniform fit/predict wrapper: `resampler_name` selects one of the
     standard techniques, applied once to the full training set, feeding
@@ -97,10 +117,16 @@ class ResamplingBaseline:
         n_estimators: int = 200,
         n_jobs: int = 4,
         random_state: int | None = None,
+        oversample_cap_mult: float | None = None,
     ):
         if resampler_name not in self.RESAMPLER_NAMES:
             raise ValueError(f"unknown resampler_name: {resampler_name}")
         self.resampler_name = resampler_name
+        # When set, over-samplers raise minority classes only to
+        # min(majority, oversample_cap_mult * median) -- see
+        # bounded_oversampling_strategy. Keeps SMOTE/oversample tractable at
+        # very high K; a no-op on near-balanced data.
+        self.oversample_cap_mult = oversample_cap_mult
         self.classifier_factory = classifier_factory or (
             lambda: RandomForestClassifier(
                 n_estimators=n_estimators, n_jobs=n_jobs, random_state=random_state
@@ -111,26 +137,32 @@ class ResamplingBaseline:
         self.k_neighbors_used_: int | None = None
         self.capped_: bool = False
 
+    def _strategy(self, y):
+        if self.oversample_cap_mult is None:
+            return "auto"
+        return bounded_oversampling_strategy(y, self.oversample_cap_mult)
+
     def _build_resampler(self, y):
         if self.resampler_name == "none":
             return None
         if self.resampler_name == "random_undersample":
             return RandomUnderSampler(random_state=self.random_state)
         if self.resampler_name == "random_oversample":
-            return RandomOverSampler(random_state=self.random_state)
+            return RandomOverSampler(sampling_strategy=self._strategy(y), random_state=self.random_state)
         if self.resampler_name in ("smote", "adasyn", "adasyn_floored_minority", "smoteenn"):
             k = _safe_k_neighbors(y, requested=5)
             self.k_neighbors_used_ = k
             self.capped_ = k < 5
+            strat = self._strategy(y)
             if self.resampler_name == "smote":
-                return SMOTE(k_neighbors=k, random_state=self.random_state)
+                return SMOTE(k_neighbors=k, sampling_strategy=strat, random_state=self.random_state)
             if self.resampler_name == "adasyn":
-                return ADASYN(n_neighbors=k, random_state=self.random_state)
+                return ADASYN(n_neighbors=k, sampling_strategy=strat, random_state=self.random_state)
             if self.resampler_name == "adasyn_floored_minority":
                 strategy = adasyn_floored_minority_strategy(y)
                 return ADASYN(n_neighbors=k, sampling_strategy=strategy, random_state=self.random_state)
             return SMOTEENN(
-                smote=SMOTE(k_neighbors=k, random_state=self.random_state),
+                smote=SMOTE(k_neighbors=k, sampling_strategy=strat, random_state=self.random_state),
                 random_state=self.random_state,
             )
         raise AssertionError("unreachable")

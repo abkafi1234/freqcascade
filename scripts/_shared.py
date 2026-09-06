@@ -46,11 +46,21 @@ DEFAULT_ENCODER = "minilm"
 # Featurization
 # --------------------------------------------------------------------------- #
 
+# 10k features (was 20k): a Random Forest on text TF-IDF plateaus well below
+# this, and the sparse matrix is half the size -- material at 40-50k rows.
+TFIDF_MAX_FEATURES = int(os.environ.get("FREQCASCADE_TFIDF_FEATURES", "10000"))
+# Over-samplers (SMOTE / ADASYN / random oversample) raise minority classes
+# only to min(majority, OVERSAMPLE_CAP_MULT * median). No-op on near-balanced
+# data; on a long tail it is a gentler rebalancing and keeps synthesis from
+# generating millions of rows at K in the hundreds.
+OVERSAMPLE_CAP_MULT = float(os.environ.get("FREQCASCADE_OVERSAMPLE_CAP", "4.0"))
+
+
 def make_tfidf(texts_train, texts_all):
     """Sparse TF-IDF, fit on the training rows only."""
     from freqcascade.features import TfidfFeaturizer
 
-    f = TfidfFeaturizer(max_features=20000, ngram_range=(1, 2))
+    f = TfidfFeaturizer(max_features=TFIDF_MAX_FEATURES, ngram_range=(1, 2))
     f.fit(list(texts_train))
     return f.transform(list(texts_all))
 
@@ -122,7 +132,8 @@ def _single_label_methods() -> dict[str, Method]:
                     ("Flat-RF+Oversample", "random_oversample"), ("Flat-RF+SMOTE", "smote"),
                     ("Flat-RF+ADASYN", "adasyn_floored_minority"), ("Flat-RF+SMOTE+ENN", "smoteenn")]:
         m[key] = Method(key, "rf", lambda s, rs=rs: ResamplingBaseline(
-            resampler_name=rs, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS, random_state=s))
+            resampler_name=rs, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS, random_state=s,
+            oversample_cap_mult=OVERSAMPLE_CAP_MULT))
 
     m["Flat Balanced-RF"] = Method("Flat Balanced-RF", "rf", lambda s: ResamplingBaseline(
         resampler_name="none",
