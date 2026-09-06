@@ -57,15 +57,14 @@ def run_dataset(name: str, method_names: list[str], encoder: str, kind: str = "a
     if any(m.kind == "nn" for m in selected):
         feats["nn"] = embed(ds.texts, encoder, ds.name)
 
-    rows = []
     for m in selected:
         print(f"  {m.name} ({m.kind})...")
         try:
-            rows += score(m, feats[m.kind], ds.target, folds, fixed_split)
+            rows = score(m, feats[m.kind], ds.target, folds, fixed_split)
         except Exception as e:  # a baseline that collapses is a result, not a crash
             print(f"    !! {m.name} failed: {type(e).__name__}: {e}")
-            rows.append(dict(method=m.name, fold=-1, error=f"{type(e).__name__}: {e}"))
-    write_results(rows, tag)
+            rows = [dict(method=m.name, fold=-1, error=f"{type(e).__name__}: {e}")]
+        write_results(rows, tag)  # write per method so a kill mid-dataset keeps finished cells
 
 
 def main() -> None:

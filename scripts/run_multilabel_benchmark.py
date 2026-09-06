@@ -50,15 +50,14 @@ def run_dataset(name: str, method_names: list[str], encoder: str, kind: str = "a
     if any(m.kind == "nn" for m in selected):
         feats["nn"] = embed(ds.texts, encoder, ds.name)
 
-    rows = []
     for m in selected:
         print(f"  {m.name} ({m.kind})...")
         try:
-            rows += score(m, feats[m.kind], ds.target, folds)
+            rows = score(m, feats[m.kind], ds.target, folds)
         except Exception as e:
             print(f"    !! {m.name} failed: {type(e).__name__}: {e}")
-            rows.append(dict(method=m.name, fold=-1, error=f"{type(e).__name__}: {e}"))
-    write_results(rows, tag)
+            rows = [dict(method=m.name, fold=-1, error=f"{type(e).__name__}: {e}")]
+        write_results(rows, tag)
 
 
 def main() -> None:

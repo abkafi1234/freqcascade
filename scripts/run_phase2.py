@@ -32,13 +32,17 @@ RFOED_RF_SL = ["20newsgroups", "ohsumed_23", "clinc150", "wos46985"]  # not drug
 FLAT_FULL = ("Flat-RF,Flat-RF+Undersample,Flat-RF+Oversample,Flat-RF+SMOTE,"
              "Flat-RF+ADASYN,Flat-RF+SMOTE+ENN,Flat Balanced-RF,OVR-RF,EasyEnsemble,RUSBoost")
 FLAT_LEAN = "Flat-RF,Flat-RF+SMOTE,Flat Balanced-RF,OVR-RF,EasyEnsemble,RUSBoost"
+# drug_reviews at K=356: drop the O(K) serial baselines (OVR-RF = 356 forests,
+# RUSBoost = single-threaded AdaBoost). Keep the imbalance comparison + EasyEnsemble.
+FLAT_DRUG = "Flat-RF,Flat-RF+SMOTE,Flat Balanced-RF,EasyEnsemble"
 FLAT_FULL_SL = ["clinc150", "20newsgroups"]
-FLAT_LEAN_SL = ["wos46985", "ohsumed_23", "drug_reviews"]
+FLAT_LEAN_SL = ["wos46985", "ohsumed_23"]
 
 STAGES: list[tuple[str, list[str]]] = [
     ("embeddings",   ["precompute_embeddings.py"]),
     ("flat_sl_full", ["run_single_label_benchmark.py", "--methods", FLAT_FULL, *FLAT_FULL_SL]),
     ("flat_sl_lean", ["run_single_label_benchmark.py", "--methods", FLAT_LEAN, *FLAT_LEAN_SL]),
+    ("flat_sl_drug", ["run_single_label_benchmark.py", "--methods", FLAT_DRUG, "drug_reviews"]),
     ("rf_ml",        ["run_multilabel_benchmark.py", "--kind", "rf", *ML]),
     ("rfoed_rf",     ["run_single_label_benchmark.py", "--methods", "RFOED-RF", *RFOED_RF_SL]),
     ("nn_sl",        ["run_single_label_benchmark.py", "--kind", "nn", *SL]),
