@@ -24,12 +24,21 @@ DONE = HERE.parent / "results" / ".phase2_done"
 SL = ["clinc150", "20newsgroups", "wos46985", "ohsumed_23", "drug_reviews"]
 ML = ["reuters21578", "hoc", "litcovid"]
 RFOED_RF_SL = ["20newsgroups", "ohsumed_23", "clinc150", "wos46985"]  # not drug_reviews (355 nodes)
-FLAT = ("Flat-RF,Flat-RF+Undersample,Flat-RF+Oversample,Flat-RF+SMOTE,"
-        "Flat-RF+ADASYN,Flat-RF+SMOTE+ENN,Flat Balanced-RF,OVR-RF,EasyEnsemble,RUSBoost")
+
+# Full baseline set for the small / low-K datasets that match the paper's
+# main table; the lean set (the essential imbalance comparison + the
+# "collapses at high K" pair) for the large / high-K ones, where the O(K)
+# and oversample-blowup baselines cost hours for little marginal insight.
+FLAT_FULL = ("Flat-RF,Flat-RF+Undersample,Flat-RF+Oversample,Flat-RF+SMOTE,"
+             "Flat-RF+ADASYN,Flat-RF+SMOTE+ENN,Flat Balanced-RF,OVR-RF,EasyEnsemble,RUSBoost")
+FLAT_LEAN = "Flat-RF,Flat-RF+SMOTE,Flat Balanced-RF,OVR-RF,EasyEnsemble,RUSBoost"
+FLAT_FULL_SL = ["clinc150", "20newsgroups"]
+FLAT_LEAN_SL = ["wos46985", "ohsumed_23", "drug_reviews"]
 
 STAGES: list[tuple[str, list[str]]] = [
     ("embeddings",   ["precompute_embeddings.py"]),
-    ("flat_sl",      ["run_single_label_benchmark.py", "--methods", FLAT, *SL]),
+    ("flat_sl_full", ["run_single_label_benchmark.py", "--methods", FLAT_FULL, *FLAT_FULL_SL]),
+    ("flat_sl_lean", ["run_single_label_benchmark.py", "--methods", FLAT_LEAN, *FLAT_LEAN_SL]),
     ("rf_ml",        ["run_multilabel_benchmark.py", "--kind", "rf", *ML]),
     ("rfoed_rf",     ["run_single_label_benchmark.py", "--methods", "RFOED-RF", *RFOED_RF_SL]),
     ("nn_sl",        ["run_single_label_benchmark.py", "--kind", "nn", *SL]),

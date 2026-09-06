@@ -24,9 +24,20 @@ class TfidfFeaturizer:
     as the RF base learner's feature space (RF traditionally pairs with
     sparse bag-of-words/TF-IDF rather than dense embeddings)."""
 
-    def __init__(self, max_features: int = 20000, ngram_range: tuple[int, int] = (1, 2)):
+    def __init__(
+        self,
+        max_features: int = 20000,
+        ngram_range: tuple[int, int] = (1, 2),
+        min_df: int = 2,
+        max_df: float = 0.6,
+    ):
+        # min_df=2 drops terms that appear in a single document (roughly half
+        # the vocabulary for typical text, and near-zero signal for a forest);
+        # it cuts both vocabulary-building time and the sparse matrix's nnz
+        # substantially. max_df drops boilerplate that appears everywhere.
         self._vectorizer = TfidfVectorizer(
-            max_features=max_features, ngram_range=ngram_range, sublinear_tf=True
+            max_features=max_features, ngram_range=ngram_range, sublinear_tf=True,
+            min_df=min_df, max_df=max_df,
         )
 
     def fit(self, texts: list[str]) -> "TfidfFeaturizer":
