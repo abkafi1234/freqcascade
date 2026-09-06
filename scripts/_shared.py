@@ -249,15 +249,15 @@ def already_done(name: str, method_name: str, min_rows: int = 6, encoder: str | 
 
 
 def write_results(rows: list[dict], name: str):
-    """Merge into results/<name>.jsonl: rows for any (method, encoder) present
-    in `rows` replace what's on disk, others are kept. Lets the benchmark be
-    run in pieces (--kind rf, then --kind nn, then a re-run of one method)
-    without clobbering earlier output."""
+    """Merge into results/<name>.jsonl: each incoming (method, encoder, fold)
+    row replaces the one on disk with the same key; everything else is kept.
+    Keying on fold (not just method) makes per-fold incremental writes safe --
+    a re-run of one fold, or one method's ten folds at once, both work."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"{name}.jsonl"
 
     def key(r):
-        return (r.get("method"), r.get("encoder"))
+        return (r.get("method"), r.get("encoder"), r.get("fold"))
 
     incoming_keys = {key(r) for r in rows}
     kept = []
