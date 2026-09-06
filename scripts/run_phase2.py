@@ -52,6 +52,7 @@ STAGES: list[tuple[str, list[str]]] = [
     ("factorial_sl", ["run_factorial_ablation.py", "20newsgroups", "clinc150", "wos46985"]),
     ("factorial_ml", ["run_factorial_ablation.py", "--multilabel", *ML]),
     ("rq5",          ["run_representation_study.py"]),
+    ("wos_remed",    ["run_wos_remediation.py"]),
     ("diagnose_wos", ["diagnose_wos.py"]),
     ("perclass",     ["dump_per_class_recall.py", "clinc150", "drug_reviews"]),
     ("figures",      ["make_figures.py"]),
