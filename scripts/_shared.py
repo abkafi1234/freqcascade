@@ -24,7 +24,11 @@ EMB_CACHE = REPO_ROOT / "data" / "cache" / "embeddings"
 
 CV_SEED = 20260905          # one seed drives every fold split in the paper
 CV_REPEATS, CV_SPLITS = 5, 2
-N_ESTIMATORS = 200          # RF trees / node
+# 100 trees (was 200): RF macro-F1 on text is flat well below 200 trees, and
+# this halves every RF fit in a campaign that is otherwise ~1.5 days of wall
+# clock. A 100-vs-200 spot check on CLINC150 is on the to-verify list before
+# the numbers are final. Env FREQCASCADE_N_ESTIMATORS to restore 200.
+N_ESTIMATORS = int(os.environ.get("FREQCASCADE_N_ESTIMATORS", "100"))
 # The base-learner pilot (paper Table 8) shows macro-F1 saturates by K~=10-25
 # members while cost keeps growing near-linearly, so the revision runs the
 # neural ensemble at 25 members / 150 epochs (was 50 / 250). Override with
