@@ -37,6 +37,9 @@ FLAT_LEAN = "Flat-RF,Flat-RF+SMOTE,Flat Balanced-RF,OVR-RF,EasyEnsemble,RUSBoost
 FLAT_DRUG = "Flat-RF,Flat-RF+SMOTE,Flat Balanced-RF,EasyEnsemble"
 FLAT_FULL_SL = ["clinc150", "20newsgroups"]
 FLAT_LEAN_SL = ["wos46985", "ohsumed_23"]
+# drug_reviews RFOED-NN runs capped in its own stage (the plain 355-node
+# cascade crashed the GPU) -- keep it out of the nn_sl dataset list.
+NN_SL = ["clinc150", "20newsgroups", "wos46985", "ohsumed_23"]
 
 STAGES: list[tuple[str, list[str]]] = [
     ("embeddings",   ["precompute_embeddings.py"]),
@@ -45,7 +48,8 @@ STAGES: list[tuple[str, list[str]]] = [
     ("flat_sl_drug", ["run_single_label_benchmark.py", "--methods", FLAT_DRUG, "drug_reviews"]),
     ("rf_ml",        ["run_multilabel_benchmark.py", "--kind", "rf", *ML]),
     ("rfoed_rf",     ["run_single_label_benchmark.py", "--methods", "RFOED-RF", *RFOED_RF_SL]),
-    ("nn_sl",        ["run_single_label_benchmark.py", "--kind", "nn", *SL]),
+    ("nn_sl",        ["run_single_label_benchmark.py", "--kind", "nn", *NN_SL]),
+    ("nn_sl_drug",   ["run_drug_reviews_nn.py"]),
     ("nn_ml",        ["run_multilabel_benchmark.py", "--kind", "nn", *ML]),
     # the 3-way ANOVA reproduces the paper's original single-label set; the
     # multi-label 2x2 is the new n=3 RQ3 test.
