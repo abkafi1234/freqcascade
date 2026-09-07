@@ -60,7 +60,9 @@ def fig_cd_diagram() -> None:
     from freqcascade import stats
 
     results = Path(__file__).resolve().parent.parent / "results"
-    sl = ["clinc150", "20newsgroups_ir50", "wos46985", "ohsumed_23", "drug_reviews"]
+    # datasets where the full method set (incl. RFOED-NN, all baselines) ran;
+    # drug_reviews used a lean set so it can't join the shared-method ranking.
+    sl = ["clinc150", "20newsgroups_ir50", "wos46985", "ohsumed_23"]
     files = [results / f"{n}.jsonl" for n in sl]
     rows = {}
     for f in files:
@@ -193,7 +195,11 @@ def fig_representation() -> None:
     if not data:
         print("  no RQ5 results yet")
         return
-    encoders = sorted({r.get("encoder") for rows in data.values() for r in rows if r.get("encoder") and r["encoder"] != "tfidf"})
+    order = ["minilm", "mpnet", "pubmedbert", "pubmedbert_neuml"]
+    present = {r.get("encoder") for rows in data.values() for r in rows if r.get("encoder") and r["encoder"] != "tfidf"}
+    encoders = [e for e in order if e in present] + sorted(present - set(order))
+    labels = {"minilm": "MiniLM (general)", "mpnet": "MPNet (general, larger)",
+              "pubmedbert": "S-PubMedBERT (biomed, retrieval)", "pubmedbert_neuml": "NeuML-PubMedBERT (biomed, similarity)"}
     fig, ax = plt.subplots(figsize=(2 + 1.6 * len(data), 4))
     width = 0.8 / max(len(encoders), 1)
     for ei, enc in enumerate(encoders):
@@ -201,13 +207,14 @@ def fig_representation() -> None:
         for name, rows in data.items():
             metric = "label_macro_f1" if "label_macro_f1" in rows[0] else "macro_f1"
             prop = [r[metric] for r in rows if r.get("encoder") == enc and r["method"].startswith(("RFOED", "FOCC"))]
-            base = [r[metric] for r in rows if r["method"].endswith("-RF") and not r["method"].startswith(("RFOED", "FOCC"))]
-            margins.append((np.mean(prop) - np.mean(base)) if prop and base else 0.0)
+            # the RQ5 baseline is the single tfidf/RF row (any method name) in that file
+            base = [r[metric] for r in rows if r.get("encoder") == "tfidf" and "error" not in r]
+            margins.append((np.mean(prop) - np.mean(base)) if prop and base else np.nan)
         x = np.arange(len(data)) + (ei - (len(encoders) - 1) / 2) * width
-        ax.bar(x, margins, width, label=enc)
+        ax.bar(x, margins, width, label=labels.get(enc, enc))
     ax.axhline(0, color="#888", lw=0.8, ls="--")
     ax.set_xticks(np.arange(len(data))); ax.set_xticklabels(list(data))
-    ax.set_ylabel("margin over best baseline"); ax.legend(fontsize=8)
+    ax.set_ylabel("macro-F1 margin over TF-IDF baseline"); ax.legend(fontsize=7)
     fig.tight_layout()
     out = FIG_DIR / "figure7_representation.pdf"
     fig.savefig(out); print(f"  -> {out}")

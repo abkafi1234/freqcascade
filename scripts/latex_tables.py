@@ -154,8 +154,8 @@ def factorial_ml():
 
 def rq5_table():
     out = ["% ---- Table: RQ5 representation study ----",
-           r"\begin{tabular}{lcccc}", r"\toprule",
-           r"Dataset & TF-IDF baseline & MiniLM & S-PubMedBERT & MPNet \\", r"\midrule"]
+           r"\begin{tabular}{lccccc}", r"\toprule",
+           r"Dataset & TF-IDF & MiniLM & MPNet & S-PubMedBERT & NeuML-PubMedBERT \\", r"\midrule"]
     for ds, pretty, metric in [("clinc150", "CLINC150", "macro_f1"), ("ohsumed_23", "OHSUMED-23", "macro_f1"),
                                ("hoc", "HoC", "label_macro_f1"), ("litcovid", "LitCovid", "label_macro_f1")]:
         rr = rows(f"rq5_{ds}")
@@ -167,8 +167,28 @@ def rq5_table():
                 d[r.get("encoder")].append(r[metric])
         g = {k: np.mean(v) for k, v in d.items()}
         row = [f"{g.get('tfidf', float('nan')):.3f}", f"{g.get('minilm', float('nan')):.3f}",
-               f"{g.get('pubmedbert', float('nan')):.3f}", f"{g.get('mpnet', float('nan')):.3f}"]
+               f"{g.get('mpnet', float('nan')):.3f}", f"{g.get('pubmedbert', float('nan')):.3f}",
+               f"{g.get('pubmedbert_neuml', float('nan')):.3f}"]
         out.append(f"{pretty} & " + " & ".join(row) + r" \\")
+    out += [r"\bottomrule", r"\end{tabular}", ""]
+    return "\n".join(out)
+
+
+def wos_sweep_table():
+    out = ["% ---- Table: WOS46985 remediation sweep (fixed 80/20 diagnostic split) ----",
+           r"\begin{tabular}{lcc}", r"\toprule",
+           r"Configuration & RFOED-RF & RFOED-NN \\", r"\midrule"]
+    rr = rows("wos46985_sweep")
+    by = {(r["base"], r["config"]): r["macro_f1"] for r in rr}
+    labels = [("plain", "Plain cascade"), ("threshold_only", "+ threshold correction"),
+              ("cap10+thr", "+ cap $C{=}10$"), ("cap15+thr", "+ cap $C{=}15$"),
+              ("cap20+thr", "+ cap $C{=}20$"), ("cap30+thr", "+ cap $C{=}30$"),
+              ("cap20+thr+morereg", "+ cap 20, heavier node reg."),
+              ("hier_plain", "Two-level hierarchical"), ("hier+thr", "Two-level hierarchical + threshold")]
+    for key, lab in labels:
+        rf = by.get(("rf", key), float("nan"))
+        nn = by.get(("nn", key), float("nan"))
+        out.append(f"{lab} & {rf:.3f} & {nn:.3f} \\\\")
     out += [r"\bottomrule", r"\end{tabular}", ""]
     return "\n".join(out)
 
@@ -190,3 +210,5 @@ if __name__ == "__main__":
     print(factorial_ml())
     print("\n%% === Table: RQ5 ===\n")
     print(rq5_table())
+    print("\n%% === Table: WOS46985 remediation sweep ===\n")
+    print(wos_sweep_table())
