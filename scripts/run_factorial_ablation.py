@@ -35,10 +35,12 @@ from freqcascade.datasets import load
 from freqcascade.metrics import evaluate
 from freqcascade.multilabel_metrics import evaluate_multilabel
 
-# The factorial isolates main effects and interactions, not absolute accuracy,
-# so it runs a lighter forest (100 trees) than the headline benchmark (200).
-# Paper Table 8 shows macro-F1 has already saturated well below this.
+# The factorial isolates main effects and interactions, not absolute accuracy:
+# a lighter forest (100 trees) and 6 of the 10 CV folds per cell (still a
+# well-powered 3-way ANOVA -- the effects the paper reports are large,
+# F=46-930). Env FREQCASCADE_FACT_TREES / FREQCASCADE_FACT_FOLDS to restore.
 FACT_TREES = int(os.environ.get("FREQCASCADE_FACT_TREES", "100"))
+FACT_FOLDS = int(os.environ.get("FREQCASCADE_FACT_FOLDS", "6"))
 
 
 def _rfoed(order, base, rebalance, seed):
@@ -88,7 +90,7 @@ def _append(rows, name):
 
 def run_single_label(name: str) -> None:
     ds = load(name)
-    folds = get_folds(ds)
+    folds = get_folds(ds)[:FACT_FOLDS]
     feats = {"rf": None, "nn": None}
     for order, base, reb in itertools.product(("frequency", "random"), ("rf", "nn"), (True, False)):
         cell = dict(ordering=order, base_learner=base, rebalance=reb)
@@ -112,7 +114,7 @@ def run_single_label(name: str) -> None:
 
 def run_multilabel(name: str, base: str = "nn") -> None:
     ds = load(name)
-    folds = get_folds(ds)
+    folds = get_folds(ds)[:FACT_FOLDS]
     X = None
     for order, reb in itertools.product(("frequency", "random"), (True, False)):
         cell = dict(ordering=order, rebalance=reb, base_learner=base)

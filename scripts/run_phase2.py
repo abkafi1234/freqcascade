@@ -58,7 +58,7 @@ STAGES: list[tuple[str, list[str]]] = [
     ("rq5",          ["run_representation_study.py"]),
     ("wos_remed",    ["run_wos_remediation.py"]),
     ("diagnose_wos", ["diagnose_wos.py"]),
-    ("perclass",     ["dump_per_class_recall.py", "clinc150", "drug_reviews"]),
+    ("perclass",     ["dump_per_class_recall.py", "clinc150"]),  # Figure 6 is CLINC150; drug_reviews RFOED-NN is uncapped -> would crash at K=356
     ("figures",      ["make_figures.py"]),
 ]
 
