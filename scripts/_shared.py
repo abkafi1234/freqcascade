@@ -42,6 +42,7 @@ ENCODERS = {
     "minilm": dict(model_name="all-MiniLM-L6-v2", chunk_words=200),
     "pubmedbert": dict(model_name="pritamdeka/S-PubMedBert-MS-MARCO", chunk_words=200),
     "mpnet": dict(model_name="all-mpnet-base-v2", chunk_words=200),   # general-domain capacity control
+    "pubmedbert_neuml": dict(model_name="NeuML/pubmedbert-base-embeddings", chunk_words=200),  # 2nd biomedical encoder
 }
 DEFAULT_ENCODER = "minilm"
 
