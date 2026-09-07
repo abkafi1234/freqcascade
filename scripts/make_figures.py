@@ -60,20 +60,25 @@ def fig_cd_diagram() -> None:
     from freqcascade import stats
 
     results = Path(__file__).resolve().parent.parent / "results"
-    files = sorted(results.glob("*.jsonl"))
-    if not files:
-        print("  no results/*.jsonl yet -- run the benchmarks first")
-        return
+    sl = ["clinc150", "20newsgroups_ir50", "wos46985", "ohsumed_23", "drug_reviews"]
+    files = [results / f"{n}.jsonl" for n in sl]
     rows = {}
     for f in files:
+        if not f.exists():
+            continue
         per = {}
         for line in f.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
             r = json.loads(line)
-            if "error" in r or "macro_f1" not in r:
+            if "error" in r or "macro_f1" not in r or "method" not in r:
                 continue
             per.setdefault(r["method"], []).append(r["macro_f1"])
         if per:
             rows[f.stem] = {m: sum(v) / len(v) for m, v in per.items()}
+    if not rows:
+        print("  no single-label benchmark results found")
+        return
     df = pd.DataFrame(rows).T.dropna(axis=1)
     if len(df) < 2:
         print("  need >= 2 datasets with shared methods for a CD diagram")
