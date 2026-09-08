@@ -174,6 +174,39 @@ def rq5_table():
     return "\n".join(out)
 
 
+def wos_ncap_table():
+    out = ["% ---- Table: n_cap sensitivity on WOS46985 (fixed 80/20 diagnostic split) ----",
+           r"\begin{tabular}{lccc}", r"\toprule",
+           r"$n_{\mathrm{cap}}$ & plain macro-F1 & own-node-miss frac & early-capture frac \\", r"\midrule"]
+    for r in rows("wos46985_ncap"):
+        if r.get("base") != "nn":
+            continue
+        out.append(f"{r['n_cap']} & {r['macro_f1']:.3f} & {r['own_node_miss']:.3f} & {r['early_capture']:.3f} \\\\")
+    out += [r"\bottomrule", r"\end{tabular}", ""]
+    return "\n".join(out)
+
+
+def focc_exposure_table():
+    import collections
+    rr = rows("focc_exposure")
+    if not rr:
+        return "% focc_exposure: no data\n"
+    agg = collections.defaultdict(lambda: collections.defaultdict(list))
+    for r in rr:
+        k = (r["dataset"], r.get("order", "frequency"))
+        agg[k]["pred"].append(r["label_macro_f1_predicted"])
+        agg[k]["orac"].append(r["label_macro_f1_oracle"])
+        agg[k]["gap"].append(r["exposure_gap"])
+    out = ["% ---- Table: FOCC-NN exposure bias (predicted vs oracle earlier-link labels) ----",
+           r"\begin{tabular}{llccc}", r"\toprule",
+           r"Dataset & order & predicted-label & oracle-label & exposure gap \\", r"\midrule"]
+    for (dsn, order), d in sorted(agg.items()):
+        out.append(f"{dsn} & {order} & {np.mean(d['pred']):.3f} & {np.mean(d['orac']):.3f} & "
+                   f"{np.mean(d['gap']):+.3f} \\\\")
+    out += [r"\bottomrule", r"\end{tabular}", ""]
+    return "\n".join(out)
+
+
 def wos_sweep_table():
     out = ["% ---- Table: WOS46985 remediation sweep (fixed 80/20 diagnostic split) ----",
            r"\begin{tabular}{lcc}", r"\toprule",
@@ -212,3 +245,7 @@ if __name__ == "__main__":
     print(rq5_table())
     print("\n%% === Table: WOS46985 remediation sweep ===\n")
     print(wos_sweep_table())
+    print("\n%% === Table: n_cap sensitivity (WOS46985) ===\n")
+    print(wos_ncap_table())
+    print("\n%% === Table: FOCC exposure bias ===\n")
+    print(focc_exposure_table())
