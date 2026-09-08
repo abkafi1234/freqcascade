@@ -164,6 +164,28 @@ class FOCCClassifier:
         """Binary (n_docs, n_labels) indicator matrix."""
         return (self.predict_proba(X) >= 0.5).astype(np.int8)
 
+    def predict_proba_oracle(self, X, Y_true: np.ndarray) -> np.ndarray:
+        """Diagnostic only: walk the chain augmenting each link with the
+        *true* earlier-link labels (as fit() does) instead of the link's own
+        predictions. The gap between this and predict_proba() is the chain's
+        exposure-bias cost -- the price of the train(true)/infer(predicted)
+        augmentation mismatch inherent to classifier chains since Read et
+        al. (2011). Never use this for real prediction: it needs the labels
+        it is trying to predict."""
+        assert self.links_, "call fit() first"
+        Y_true = np.asarray(Y_true)
+        n_docs = X.shape[0]
+        proba = np.zeros((n_docs, self.n_labels_))
+        processed_cols: list[int] = []
+
+        for link in self.links_:
+            extra = Y_true[:, processed_cols] if processed_cols else np.zeros((n_docs, 0), dtype=Y_true.dtype)
+            X_aug = _augment(X, extra)
+            proba[:, link.label_index] = link.classifier.predict_proba(X_aug)[:, 1]
+            processed_cols.append(link.label_index)
+
+        return proba
+
     @property
     def classes_(self) -> list[int]:
         return list(range(self.n_labels_))
