@@ -247,6 +247,56 @@ def fig_per_class_recall() -> None:
         fig.savefig(out); print(f"  -> {out}")
 
 
+def fig_scaling_curve() -> None:
+    """The central-claim figure: macro-F1 vs class count K on subsampled
+    CLINC150. Resampling ensembles collapse as K grows; local decomposition
+    stays well-posed. Needs results/scaling_clinc150.jsonl from
+    scripts/scaling_curve.py."""
+    rows = _load_jsonl(RESULTS / "scaling_clinc150.jsonl")
+    rows = [r for r in rows if "macro_f1" in r]
+    if not rows:
+        print("  no scaling results yet (run scripts/scaling_curve.py)")
+        return
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    order = ["RFOED-NN", "Flat-RF+SMOTE", "RFOED-RF", "RUSBoost", "EasyEnsemble"]
+    styles = {
+        "RFOED-NN": dict(color="#1b7837", marker="o", lw=2.2, zorder=5),
+        "Flat-RF+SMOTE": dict(color="#2166ac", marker="s", lw=1.6),
+        "RFOED-RF": dict(color="#5aae61", marker="^", lw=1.6, ls="--"),
+        "RUSBoost": dict(color="#b2182b", marker="v", lw=1.6),
+        "EasyEnsemble": dict(color="#d6604d", marker="D", lw=1.6),
+    }
+    by = {}
+    for r in rows:
+        by.setdefault(r["method"], {}).setdefault(r["K"], []).append(r["macro_f1"])
+    fig, ax = plt.subplots(figsize=(6.4, 4.2))
+    for m in order:
+        if m not in by:
+            continue
+        ks = sorted(by[m])
+        mean = np.array([np.mean(by[m][k]) for k in ks])
+        sd = np.array([np.std(by[m][k]) for k in ks])
+        st = styles.get(m, dict(marker="o", lw=1.5))
+        ax.plot(ks, mean, label=m, ms=5, **st)
+        ax.fill_between(ks, mean - sd, mean + sd, alpha=0.13,
+                        color=st.get("color"))
+    ax.set_xlabel("number of classes $K$ (subsampled from CLINC150)")
+    ax.set_ylabel("macro-F1")
+    ax.set_ylim(-0.02, 1.0)
+    ax.set_xscale("log")
+    ax.set_xticks([5, 10, 25, 50, 100, 150])
+    ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    ax.axvspan(100, 160, color="#000000", alpha=0.04)
+    ax.legend(fontsize=8, loc="lower left")
+    fig.tight_layout()
+    out = FIG_DIR / "figure8_scaling_curve.pdf"
+    fig.savefig(out); print(f"  -> {out}")
+
+
 FIGURES = {
     "rank_frequency": fig_rank_frequency,
     "cd_diagram": fig_cd_diagram,
@@ -254,6 +304,7 @@ FIGURES = {
     "focc_ablation": fig_focc_ablation,
     "representation": fig_representation,
     "per_class_recall": fig_per_class_recall,
+    "scaling_curve": fig_scaling_curve,
 }
 
 

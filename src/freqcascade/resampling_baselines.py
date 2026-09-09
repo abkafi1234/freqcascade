@@ -197,18 +197,16 @@ def easy_ensemble_classifier(n_estimators: int = 50, random_state: int | None = 
 
 
 def rusboost_classifier(n_estimators: int = 50, random_state: int | None = None):
-    """Boosting + random undersampling (Seiffert et al. 2010).
+    """Boosting + random undersampling (Seiffert et al. 2010), canonical
+    configuration: the imbalanced-learn default decision-stump weak learner.
 
-    The default depth-1 weak learner cannot beat 1/K on a many-class problem
-    after undersampling, so SAMME aborts the whole ensemble ("BaseClassifier
-    ... is worse than random"). A depth-8 tree clears 1/K on every dataset
-    here and lets the ensemble fit and produce its (still near-zero at high K)
-    score, rather than a hard failure.
+    This is deliberately the un-tuned, as-published method. At high class
+    count the undersampled stump often cannot beat 1/K, and SAMME then aborts
+    the ensemble ("BaseClassifier ... is worse than random"): that abort is a
+    reported result, not something to engineer around. A deeper weak learner
+    keeps the ensemble fitting but only lifts its high-K score from
+    near-zero to still-far-below-baseline (see the scaling study), so the
+    conclusion---RUSBoost is not viable at high $K$---does not depend on the
+    weak-learner depth.
     """
-    from sklearn.tree import DecisionTreeClassifier
-
-    return RUSBoostClassifier(
-        estimator=DecisionTreeClassifier(max_depth=8),
-        n_estimators=n_estimators,
-        random_state=random_state,
-    )
+    return RUSBoostClassifier(n_estimators=n_estimators, random_state=random_state)
