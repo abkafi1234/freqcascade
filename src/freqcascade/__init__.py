@@ -44,7 +44,7 @@ from .focc import FOCCClassifier
 from .metrics import evaluate
 from .multilabel_metrics import evaluate_multilabel
 
-__version__ = "1.2.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "RFOEDClassifier",
