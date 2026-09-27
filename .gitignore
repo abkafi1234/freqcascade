@@ -28,3 +28,6 @@ data/folds/*
 !data/folds/*.npz
 results/
 *.npy
+
+# Run logs from the experiment queues (they record local paths)
+*.log

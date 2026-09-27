@@ -86,3 +86,35 @@ def test_align_proba_columns_accepts_zero_one():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_adaptive_cap_never_draws_fewer_than_the_positive_stratum():
+    # 300 positives vs 5000 negatives, cap 100: the fixed rule cuts both strata
+    # to 100; the adaptive rule keeps the positives in full (300 each).
+    y = np.array([1] * 300 + [0] * 5000)
+    fixed = balanced_bootstrap_indices(y, np.random.default_rng(0), max_per_class=100)
+    adapt = balanced_bootstrap_indices(y, np.random.default_rng(0), max_per_class=100,
+                                       cap_rule="adaptive")
+    assert len(fixed) == 200
+    assert len(adapt) == 600
+    assert (y[adapt] == 1).sum() == (y[adapt] == 0).sum() == 300   # prior stays exactly 0.5
+
+
+def test_adaptive_cap_caps_only_the_rest_stratum():
+    y = np.array([1] * 50 + [0] * 5000)
+    idx = balanced_bootstrap_indices(y, np.random.default_rng(0), max_per_class=800,
+                                     cap_rule="adaptive")
+    assert len(idx) == 1600 and (y[idx] == 1).sum() == 800
+
+
+def test_adaptive_cap_with_no_limit_is_the_uncapped_draw():
+    y = np.array([1] * 50 + [0] * 700)
+    a = balanced_bootstrap_indices(y, np.random.default_rng(0), cap_rule="adaptive")
+    b = balanced_bootstrap_indices(y, np.random.default_rng(0))
+    assert len(a) == len(b) == 1400
+
+
+def test_unknown_cap_rule_is_rejected():
+    import pytest
+    with pytest.raises(ValueError):
+        balanced_bootstrap_indices(np.array([0, 1]), np.random.default_rng(0), cap_rule="nope")

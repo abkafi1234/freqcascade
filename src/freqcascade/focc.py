@@ -223,6 +223,8 @@ def nn_link_factory(
     max_epochs: int = 250,
     device: str | None = None,
     base_seed: int | None = None,
+    max_bootstrap_per_class: int | None = 2000,
+    cap_rule: str = "fixed",
 ) -> Callable[[int, bool], TorchNNEnsembleBaseLearner]:
     """Per-link NN-ensemble factory via TorchNNEnsembleBaseLearner. Defaults
     (n_members=50, hidden_size=128, max_epochs=250) match RFOED-NN's current
@@ -244,6 +246,8 @@ def nn_link_factory(
             max_epochs=max_epochs,
             device=device,
             random_state=seed,
+            max_bootstrap_per_class=max_bootstrap_per_class,
+            cap_rule=cap_rule,
         )
 
     return factory
@@ -274,6 +278,8 @@ def make_focc_nn(
     hidden_size: int = 128,
     max_epochs: int = 250,
     device: str | None = None,
+    max_bootstrap_per_class: int | None = 2000,
+    cap_rule: str = "fixed",
 ) -> FOCCClassifier:
     """FOCC-NN: frequency-ordered chain, bagged-NN-ensemble per link,
     per-link rebalancing -- design §3b, method 6, the **main multi-label
@@ -283,6 +289,7 @@ def make_focc_nn(
         base_learner_factory=nn_link_factory(
             n_members=n_members, hidden_size=hidden_size, max_epochs=max_epochs,
             device=device, base_seed=random_state,
+            max_bootstrap_per_class=max_bootstrap_per_class, cap_rule=cap_rule,
         ),
         order=order,
         rebalance=rebalance,

@@ -28,9 +28,13 @@ class TorchNNEnsembleBaseLearner:
         weight_decay: float = 1e-4,
         device: str | None = None,
         random_state: int | None = None,
-        max_bootstrap_per_class: int = 2000,
+        max_bootstrap_per_class: int | None = 2000,
+        cap_rule: str = "fixed",
     ):
         self.n_members = n_members
+        # How max_bootstrap_per_class combines with the stratum sizes; see
+        # rebalance.balanced_bootstrap_indices ("fixed" or "adaptive").
+        self.cap_rule = cap_rule
         self.rebalance = rebalance
         self.hidden_size = hidden_size
         self.max_epochs = max_epochs
@@ -69,12 +73,20 @@ class TorchNNEnsembleBaseLearner:
         # case (2 * max_bootstrap_per_class) so both branches produce a
         # fixed-length draw regardless of dataset size — required for a
         # rectangular (K, boot_len) index array, and the memory-safety
-        # reason this cap exists in the first place.
-        plain_boot_len = min(n, 2 * self.max_bootstrap_per_class)
+        # reason this cap exists in the first place. max_bootstrap_per_class
+        # of None means "no cap" -- the contract balanced_bootstrap_indices
+        # documents -- and the plain branch then falls back to a standard
+        # size-n bootstrap. Without this guard an uncapped ensemble raised
+        # TypeError here even when rebalance=True left the value unused.
+        plain_boot_len = (
+            n if self.max_bootstrap_per_class is None
+            else min(n, 2 * self.max_bootstrap_per_class)
+        )
         idx_list = []
         for _ in range(K):
             if self.rebalance:
-                idx = balanced_bootstrap_indices(y, rng, max_per_class=self.max_bootstrap_per_class)
+                idx = balanced_bootstrap_indices(y, rng, max_per_class=self.max_bootstrap_per_class,
+                                                 cap_rule=self.cap_rule)
             else:
                 idx = rng.integers(0, n, size=plain_boot_len)
             idx_list.append(idx)

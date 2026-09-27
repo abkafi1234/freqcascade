@@ -26,16 +26,11 @@ def build(seed: int):
     from freqcascade.torch_ensemble import TorchNNEnsembleBaseLearner
     from sklearn.neural_network import MLPClassifier
 
-    node = lambda i: TorchNNEnsembleBaseLearner(
-        n_members=NN_MEMBERS, rebalance=True, hidden_size=128,
-        max_epochs=NN_EPOCHS, random_state=seed * 1000 + i,
-    )
+    from _shared import _GammaCapRFOED
     tail = lambda: MLPClassifier(hidden_layer_sizes=(128,), max_iter=NN_EPOCHS,
                                  early_stopping=True, random_state=0)
-    return RFOEDClassifier(
-        base_learner_factory=node, order="frequency", random_state=seed,
-        cascade_cap=CAP, tail_learner_factory=tail,
-    )
+    # node learners use the package's gamma cap (_shared.NCAP_GAMMA), like RFOED-NN
+    return _GammaCapRFOED(seed, cascade_cap=CAP, tail_learner_factory=tail)
 
 
 def main() -> None:

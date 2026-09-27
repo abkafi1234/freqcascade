@@ -115,6 +115,113 @@ def _nn_node_factory(seed, rebalance=True):
     )
 
 
+
+# --- D2: data-scaled rebalancing cap ----------------------------------------------
+# gamma = 128 was selected on validation data carved from the training folds
+# (select_ncap_gamma.py, 2026-09-18; protocol fixed in plan.md before it ran). Each
+# node or link draws at most gamma * n / K per stratum under cap_rule="adaptive",
+# with n and K those of the training data the estimator is fitted on, exactly as in
+# run_ncap_adaptive.py. It replaced the fixed cap of 2000, which cost RFOED-NN up to
+# 0.12 macro-F1. FREQCASCADE_NCAP_GAMMA=0 restores the fixed-2000 configuration.
+NCAP_GAMMA = float(os.environ.get("FREQCASCADE_NCAP_GAMMA", "128"))
+
+
+def _node_cap(n, K):
+    if NCAP_GAMMA <= 0:
+        return 2000, "fixed"
+    return int(round(NCAP_GAMMA * n / K)), "adaptive"
+
+
+class _GammaCapRFOED:
+    """RFOED-NN with the gamma cap computed from the training data at fit time."""
+
+    def __init__(self, seed, **rfoed_kw):
+        self.seed, self.rfoed_kw = seed, rfoed_kw
+
+    def fit(self, X, y):
+        from freqcascade.decomposition import RFOEDClassifier
+        from freqcascade.torch_ensemble import TorchNNEnsembleBaseLearner
+        y = np.asarray(y)
+        cap, rule = _node_cap(len(y), int(len(np.unique(y))))
+        self.cap_, self.cap_rule_ = cap, rule
+        # Bind plain values, not `self`: a factory closing over self would form the cycle
+        # self -> est_ -> base_learner_factory -> self, which reference counting cannot
+        # free, so every fitted cascade's GPU tensors outlived it until the cyclic GC ran.
+        # That OOM-killed the CLINC150 re-run after several seeds on 2026-09-18.
+        seed = self.seed
+        fac = lambda node, seed=seed, cap=cap, rule=rule: TorchNNEnsembleBaseLearner(  # noqa: E731
+            n_members=NN_MEMBERS, rebalance=True, hidden_size=128, max_epochs=NN_EPOCHS,
+            random_state=seed * 1000 + node, max_bootstrap_per_class=cap, cap_rule=rule)
+        self.est_ = RFOEDClassifier(base_learner_factory=fac, order="frequency",
+                                    random_state=self.seed, **self.rfoed_kw).fit(X, y)
+        return self
+
+    def predict(self, X):
+        return self.est_.predict(X)
+
+    def predict_proba(self, X):
+        return self.est_.predict_proba(X)
+
+
+class _GammaCapFOCC:
+    """FOCC-NN with the gamma cap computed at fit time (K = number of labels)."""
+
+    def __init__(self, seed):
+        self.seed = seed
+
+    def fit(self, X, Y):
+        from freqcascade.focc import make_focc_nn
+        Y = np.asarray(Y)
+        cap, rule = _node_cap(len(Y), int(Y.shape[1]))
+        self.cap_, self.cap_rule_ = cap, rule
+        self.est_ = make_focc_nn(order="frequency", rebalance=True, random_state=self.seed,
+                                 n_members=NN_MEMBERS, hidden_size=128, max_epochs=NN_EPOCHS,
+                                 max_bootstrap_per_class=cap, cap_rule=rule).fit(X, Y)
+        return self
+
+    def predict(self, X):
+        return self.est_.predict(X)
+
+    def predict_proba(self, X):
+        return self.est_.predict_proba(X)
+
+
+class _WeightedMLP:
+    """sklearn MLPClassifier fitted with balanced per-class sample weights
+    (MLPClassifier has no class_weight argument, but fit() accepts
+    sample_weight). Weight of class c = n / (K * n_c), as class_weight="balanced"."""
+
+    def __init__(self, **kw):
+        from sklearn.neural_network import MLPClassifier
+        self.clf = MLPClassifier(**kw)
+
+    def fit(self, X, y):
+        classes, inv, counts = np.unique(y, return_inverse=True, return_counts=True)
+        w = (len(y) / (len(classes) * counts))[inv]
+        self.clf.fit(X, y, sample_weight=w)
+        return self
+
+    def predict(self, X):
+        return self.clf.predict(X)
+
+    def predict_proba(self, X):
+        return self.clf.predict_proba(X)
+
+
+# Flat neural baselines on the *same* frozen embeddings RFOED-NN / FOCC-NN use,
+# added 2026-09-18 after the R5 sweep showed one plain MLP (128 hidden units, the
+# width of RFOED-NN's node learners) beating RFOED-NN at every class count on the
+# CLINC150 subsets. Until then every flat baseline in the benchmark used TF-IDF,
+# so representation and decomposition were confounded. Early stopping holds out
+# 10% of the training rows, so no test fold is seen.
+FLAT_MLP_KW = dict(hidden_layer_sizes=(128,), early_stopping=True, validation_fraction=0.1,
+                   n_iter_no_change=10, max_iter=300)
+# Multi-label: sklearn's early stopping scores *subset* accuracy, which is near 0
+# for a multi-label head early in training, so it halted HoC after 15 iterations
+# at label-macro-F1 0.08 (0.69 when trained). Use sklearn's default instead: no
+# early stopping, 200 iterations.
+FLAT_MLP_ML_KW = dict(hidden_layer_sizes=(128,), max_iter=200)
+
 def _single_label_methods() -> dict[str, Method]:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.multiclass import OneVsRestClassifier
@@ -130,8 +237,7 @@ def _single_label_methods() -> dict[str, Method]:
 
     m["RFOED-RF"] = Method("RFOED-RF", "rf", lambda s: RFOEDClassifier(
         base_learner_factory=_rf_node_factory(s), order="frequency", random_state=s), tags=("proposed",))
-    m["RFOED-NN"] = Method("RFOED-NN", "nn", lambda s: RFOEDClassifier(
-        base_learner_factory=_nn_node_factory(s), order="frequency", random_state=s), tags=("proposed",))
+    m["RFOED-NN"] = Method("RFOED-NN", "nn", lambda s: _GammaCapRFOED(s), tags=("proposed",))
 
     for key, rs in [("Flat-RF", "none"), ("Flat-RF+Undersample", "random_undersample"),
                     ("Flat-RF+Oversample", "random_oversample"), ("Flat-RF+SMOTE", "smote"),
@@ -149,6 +255,11 @@ def _single_label_methods() -> dict[str, Method]:
         RandomForestClassifier(n_estimators=N_ESTIMATORS, n_jobs=2, random_state=s), n_jobs=RF_NJOBS))
     m["EasyEnsemble"] = Method("EasyEnsemble", "rf", lambda s: easy_ensemble_classifier(random_state=s, n_jobs=RF_NJOBS))
     m["RUSBoost"] = Method("RUSBoost", "rf", lambda s: rusboost_classifier(n_estimators=30, random_state=s))
+
+    from sklearn.neural_network import MLPClassifier
+    m["Flat-MLP"] = Method("Flat-MLP", "nn", lambda s: MLPClassifier(random_state=s, **FLAT_MLP_KW))
+    m["Flat-MLP (class-weighted)"] = Method("Flat-MLP (class-weighted)", "nn",
+                                            lambda s: _WeightedMLP(random_state=s, **FLAT_MLP_KW))
     return m
 
 
@@ -164,9 +275,7 @@ def _multi_label_methods() -> dict[str, Method]:
     m: dict[str, Method] = {}
     m["FOCC-RF"] = Method("FOCC-RF", "rf", lambda s: make_focc_rf(
         order="frequency", rebalance=True, random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True, tags=("proposed",))
-    m["FOCC-NN"] = Method("FOCC-NN", "nn", lambda s: make_focc_nn(
-        order="frequency", rebalance=True, random_state=s, n_members=NN_MEMBERS,
-        hidden_size=128, max_epochs=NN_EPOCHS), multilabel=True, tags=("proposed",))
+    m["FOCC-NN"] = Method("FOCC-NN", "nn", lambda s: _GammaCapFOCC(s), multilabel=True, tags=("proposed",))
     m["Binary Relevance-RF"] = Method("Binary Relevance-RF", "rf",
         lambda s: make_br_rf(random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True)
     m["Balanced BR-RF"] = Method("Balanced BR-RF", "rf",
@@ -175,6 +284,12 @@ def _multi_label_methods() -> dict[str, Method]:
         lambda s: make_cc_rf(random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True)
     m["Ensemble of Chains-RF"] = Method("Ensemble of Chains-RF", "rf",
         lambda s: make_ecc_rf(random_state=s, n_estimators=N_ESTIMATORS, n_jobs=RF_NJOBS), multilabel=True)
+
+    # multi-label flat MLP: one network with a sigmoid output per label (sklearn's
+    # native multi-label mode), on the same embeddings FOCC-NN uses
+    from sklearn.neural_network import MLPClassifier
+    m["Flat-MLP"] = Method("Flat-MLP", "nn", lambda s: MLPClassifier(random_state=s, **FLAT_MLP_ML_KW),
+                           multilabel=True)
     return m
 
 
@@ -205,9 +320,20 @@ def get_folds(ds, path: Path | None = None):
     return folds
 
 
-def score(method: Method, X, y, folds, fixed_split=None):
+def score(method: Method, X, y, folds, fixed_split=None, featurize=None):
     """Fit + evaluate `method` over every fold (or the fixed split, repeated
-    over seeds for CLINC150). Returns a list of per-fold metric dicts."""
+    over seeds for CLINC150). Returns a list of per-fold metric dicts.
+
+    `featurize(train_idx) -> X_all` refits the representation inside each fold
+    on that fold's training rows and returns the feature matrix for all rows.
+    When supplied it overrides `X`, so the featurizer never sees the held-out
+    partition. Without it a caller that fits TF-IDF once over the whole corpus
+    lets test-fold vocabulary and document frequencies inform the
+    representation -- transductive rather than label leakage, and symmetric
+    across methods sharing the features, but optimistic in absolute terms.
+    Frozen sentence embeddings are unaffected either way: they are computed per
+    document by a pretrained encoder and no corpus statistic is fitted.
+    """
     from freqcascade.metrics import evaluate
     from freqcascade.multilabel_metrics import evaluate_multilabel
 
@@ -219,10 +345,11 @@ def score(method: Method, X, y, folds, fixed_split=None):
         else [(i, f.train_idx, f.test_idx) for i, f in enumerate(folds)]
     )
     for seed, tr, te in iterator:
+        Xf = X if featurize is None else featurize(tr)
         est = method.build(seed)
         t0 = time.perf_counter()
-        est.fit(X[tr], y[tr])
-        pred = est.predict(X[te])
+        est.fit(Xf[tr], y[tr])
+        pred = est.predict(Xf[te])
         dt = time.perf_counter() - t0
         if method.multilabel:
             met = evaluate_multilabel(y[te], pred, y[tr])
